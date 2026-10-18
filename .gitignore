@@ -1,0 +1,19 @@
+# Gerado pelo CMake / Visual Studio
+build/
+out/
+.vs/
+*.user
+CMakeSettings.json
+
+# ROMs, BIOS e saves: nunca entram no repositório (direitos autorais e dados pessoais)
+*.gba
+*.agb
+*.bin
+*.zip
+*.7z
+*.sav
+*.sav.tmp
+*.gbaemu.sav
+
+# Saídas de diagnóstico
+rastreio*.txt
