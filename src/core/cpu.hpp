@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "bus.hpp"
+#include "state.hpp"
 
 namespace gba {
 
@@ -56,6 +57,7 @@ public:
 
     // Sem BIOS real, as chamadas SWI são emuladas em C++ (HLE) em vez de saltar para 0x08.
     void setHleBios(bool enabled) { hleBios_ = enabled; }
+    void serialize(StateArchive& ar);
 
 private:
     struct ShiftResult { uint32_t value; bool carry; };

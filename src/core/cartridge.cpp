@@ -19,21 +19,32 @@ std::string asciiField(const std::vector<uint8_t>& rom, size_t off, size_t len) 
 }
 } // namespace
 
+std::filesystem::path utf8Path(const std::string& utf8) {
+    return std::filesystem::path(std::u8string(reinterpret_cast<const char8_t*>(utf8.data()), utf8.size()));
+}
+
+std::string pathToUtf8(const std::filesystem::path& path) {
+    const std::u8string u = path.u8string();
+    return std::string(reinterpret_cast<const char*>(u.data()), u.size());
+}
+
 std::vector<uint8_t> readFile(const std::string& path) {
-    std::ifstream f(path, std::ios::binary);
+    std::ifstream f(utf8Path(path), std::ios::binary);
     if (!f) throw std::runtime_error("Não foi possível abrir: " + path);
     return {std::istreambuf_iterator<char>(f), std::istreambuf_iterator<char>()};
 }
 
 void writeFileSafely(const std::string& path, const std::vector<uint8_t>& data) {
-    const std::string tmp = path + ".tmp";
+    const std::filesystem::path target = utf8Path(path);
+    std::filesystem::path tmp = target;
+    tmp += ".tmp";
     {
         std::ofstream f(tmp, std::ios::binary | std::ios::trunc);
-        if (!f) throw std::runtime_error("Não foi possível gravar: " + tmp);
+        if (!f) throw std::runtime_error("Não foi possível gravar: " + pathToUtf8(tmp));
         f.write(reinterpret_cast<const char*>(data.data()), static_cast<std::streamsize>(data.size()));
-        if (!f) throw std::runtime_error("Falha ao gravar: " + tmp);
+        if (!f) throw std::runtime_error("Falha ao gravar: " + pathToUtf8(tmp));
     }
-    std::filesystem::rename(tmp, path); // substitui o arquivo antigo de uma vez
+    std::filesystem::rename(tmp, target); // substitui o arquivo antigo de uma vez
 }
 
 CartridgeHeader parseHeader(const std::vector<uint8_t>& rom) {

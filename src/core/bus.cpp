@@ -412,3 +412,23 @@ uint16_t Bus::ioRead16(uint32_t offset) const {
 }
 
 } // namespace gba
+
+namespace gba {
+
+void Bus::serialize(StateArchive& ar) {
+    ar.value(bios_);   // inclui o tratador de IRQ HLE gravado na BIOS
+    ar.value(ewram_);
+    ar.value(iwram_);
+    ar.value(io_);
+    ar.value(palette_);
+    ar.value(vram_);
+    ar.value(oam_);
+    ar.value(keyInput_);
+    ar.value(pcInBios_);
+    ar.value(biosOpcode_);
+    ar.value(lastFetch_);
+    backup_.serialize(ar);
+    if (ar.loading()) probes_.clear();
+}
+
+} // namespace gba

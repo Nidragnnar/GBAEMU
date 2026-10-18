@@ -2,6 +2,7 @@
 // Leitura do cabeçalho da ROM (GBATEK, "GBA Cartridge Header", 0x00-0xBF).
 
 #include <cstdint>
+#include <filesystem>
 #include <string>
 #include <vector>
 
@@ -16,6 +17,10 @@ struct CartridgeHeader {
     bool checksumOk = false;
     bool fixedValueOk = false; // 0xB2 deve ser 0x96
 };
+
+// Caminhos são sempre UTF-8 (no Windows, o SDL entrega os argumentos e os arquivos arrastados assim).
+std::filesystem::path utf8Path(const std::string& utf8);
+std::string pathToUtf8(const std::filesystem::path& path);
 
 std::vector<uint8_t> readFile(const std::string& path);
 // Grava num arquivo temporário e renomeia: uma falha no meio nunca corrompe o arquivo existente.

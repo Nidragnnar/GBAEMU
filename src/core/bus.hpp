@@ -14,10 +14,12 @@
 #include <array>
 #include <cstdint>
 #include <functional>
+#include <memory>
 #include <utility>
 #include <vector>
 
 #include "backup.hpp"
+#include "state.hpp"
 
 namespace gba {
 
@@ -45,12 +47,15 @@ struct Probe { ProbeKind kind; uint32_t addr; uint32_t value; };
 class Bus {
 public:
     Bus();
+    Bus(const Bus&) = delete;            // as referências internas apontam para a própria memória
+    Bus& operator=(const Bus&) = delete;
 
     void loadBios(std::vector<uint8_t> data);
     // Sem BIOS real: grava em 0x18 o tratador de IRQ da BIOS original, que chama o do jogo.
     void installHleBiosStub();
     void loadRom(std::vector<uint8_t> data); // também detecta o tipo de save
     Backup& backup() { return backup_; }
+    void serialize(StateArchive& ar);
 
     // Busca de instruções (não passa pela sonda).
     uint16_t fetch16(uint32_t addr) const;
@@ -100,13 +105,25 @@ private:
     static uint32_t vramOffset(uint32_t addr);
     void ioWrite8(uint32_t offset, uint8_t value); // escrita da CPU em I/O, com as regras de cada registrador
 
-    std::array<uint8_t, 16 * 1024>  bios_{};
-    std::array<uint8_t, 256 * 1024> ewram_{};
-    std::array<uint8_t, 32 * 1024>  iwram_{};
-    std::array<uint8_t, 1024>       io_{};
-    std::array<uint8_t, 1024>       palette_{};
-    std::array<uint8_t, 96 * 1024>  vram_{};
-    std::array<uint8_t, 1024>       oam_{};
+    // As memórias somam ~400 KB: ficam no heap para o console poder ser criado em qualquer lugar
+    // (a pilha do Windows tem só 1 MB). As referências abaixo mantêm o acesso direto e simples.
+    struct Memory {
+        std::array<uint8_t, 16 * 1024>  bios{};
+        std::array<uint8_t, 256 * 1024> ewram{};
+        std::array<uint8_t, 32 * 1024>  iwram{};
+        std::array<uint8_t, 1024>       io{};
+        std::array<uint8_t, 1024>       palette{};
+        std::array<uint8_t, 96 * 1024>  vram{};
+        std::array<uint8_t, 1024>       oam{};
+    };
+    std::unique_ptr<Memory> memory_ = std::make_unique<Memory>();
+    std::array<uint8_t, 16 * 1024>&  bios_ = memory_->bios;
+    std::array<uint8_t, 256 * 1024>& ewram_ = memory_->ewram;
+    std::array<uint8_t, 32 * 1024>&  iwram_ = memory_->iwram;
+    std::array<uint8_t, 1024>&       io_ = memory_->io;
+    std::array<uint8_t, 1024>&       palette_ = memory_->palette;
+    std::array<uint8_t, 96 * 1024>&  vram_ = memory_->vram;
+    std::array<uint8_t, 1024>&       oam_ = memory_->oam;
     std::vector<uint8_t>            rom_;
     mutable Backup                  backup_;
     bool isEepromAddress(uint32_t addr) const;

@@ -317,3 +317,23 @@ void Apu::outputSample() {
 }
 
 } // namespace gba
+
+namespace gba {
+
+void Apu::serialize(StateArchive& ar) {
+    for (auto& sq : square_) ar.value(sq);
+    ar.value(wave_);
+    ar.value(noise_);
+    for (auto& f : fifo_) ar.value(f);
+    ar.value(frameSequencerTimer_);
+    ar.value(frameSequencerStep_);
+    ar.value(sampleTimer_);
+    ar.value(pendingCycles_);
+    ar.value(highPassL_);
+    ar.value(highPassR_);
+    ar.value(lastInL_);
+    ar.value(lastInR_);
+    if (ar.loading()) samples_.clear();
+}
+
+} // namespace gba

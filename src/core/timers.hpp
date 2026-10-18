@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "bus.hpp"
+#include "state.hpp"
 
 namespace gba {
 
@@ -18,6 +19,7 @@ public:
 
     void reset();
     void onIoWrite(uint32_t offset);
+    void serialize(StateArchive& ar) { for (auto& t : timers_) ar.value(t); ar.value(anyEnabled_); }
     // Chamado depois de cada instrução com os ciclos gastos (o caso comum, tudo desligado, é imediato).
     void advance(int cycles) { if (anyEnabled_) advanceEnabled(cycles); }
     // Avisado quando o Timer 0 ou 1 estoura (as filas de som A/B consomem amostras nesse momento).

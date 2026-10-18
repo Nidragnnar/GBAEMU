@@ -19,7 +19,7 @@ class Gba {
 public:
     Gba();
 
-    void loadRom(std::vector<uint8_t> rom) { bus_.loadRom(std::move(rom)); }
+    void loadRom(std::vector<uint8_t> rom);
     void loadBios(std::vector<uint8_t> bios) { bus_.loadBios(std::move(bios)); hasBios_ = true; }
     void reset();
 
@@ -33,6 +33,12 @@ public:
     Timers& timers() { return timers_; }
     Apu& apu() { return apu_; }
     uint64_t instructions() const { return instructions_; }
+
+    // Save states. loadState lança exceção (e mantém o estado atual) se o arquivo for de outra ROM,
+    // de outra versão do formato ou estiver corrompido.
+    std::vector<uint8_t> saveState();
+    void loadState(const std::vector<uint8_t>& data);
+    uint64_t romHash() const { return romHash_; }
 
     // Sonda: cada combinação (instrução, tipo, endereço) é registrada uma vez.
     struct ProbeHit { uint32_t pc; Probe probe; uint64_t frame; };
@@ -52,6 +58,8 @@ private:
     int64_t cycleBalance_ = 0; // ciclos que sobraram ou faltaram da fatia anterior
     uint64_t instructions_ = 0;
     uint64_t frames_ = 0;
+    uint64_t romHash_ = 0;
+    void serialize(StateArchive& ar);
     std::vector<ProbeHit> probeLog_;
     std::set<std::tuple<uint32_t, int, uint32_t>> probeSeen_;
     void collectProbes();

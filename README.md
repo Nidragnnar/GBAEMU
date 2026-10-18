@@ -24,6 +24,10 @@ Emulador de Game Boy Advance em C++20, escrito do zero usando o GBATEK como espe
 - [x] Timers: 4 canais, prescalers 1/64/256/1024, cascata, recarga e IRQ
 - [x] Áudio: 4 canais do Game Boy (quadradas com sweep, onda, ruído; duração e envelope) e filas A/B com DMA de som e timers, 32.768 Hz estéreo
 - [x] Ritmo pela placa de som (velocidade correta em qualquer monitor) e aceleração com Tab
+- [x] Save states (4 slots), com verificação de jogo e de versão
+- [x] Interface com Dear ImGui: menus, abrir ROM (diálogo, arrastar e soltar, recentes), pausar, reiniciar, escala, tela cheia, volume, tema pastel
+- [ ] Configuração de teclas e controle (gamepad)
+- [ ] Janelas de depuração (CPU, memória, VRAM, paletas, sprites)
 
 ## Compilar no Windows
 
@@ -36,7 +40,11 @@ cmake --build build --config Release
 ctest --test-dir build -C Release
 ```
 
+O Dear ImGui (interface) é baixado automaticamente pelo CMake na primeira configuração (precisa de internet e do Git).
+
 ## Rodar
+
+Sem argumentos, abre a tela inicial: escolha um jogo pelo menu, arraste o `.gba` para a janela ou clique num dos recentes. Também dá para passar a ROM direto:
 
 ```bat
 build\Release\gbaemu.exe jogo.gba --test-pattern
@@ -44,11 +52,16 @@ build\Release\gbaemu.exe jogo.gba --test-pattern
 
 Sem `--test-pattern`, a CPU executa a ROM. Se ela encontrar algo ainda não implementado (como uma função da BIOS), para e mostra o motivo no terminal. A barra de título mostra o PC atual.
 
-Controles: setas = direcional, Z = A, X = B, Enter = START, Backspace = SELECT, A = L, S = R, Tab (segurar) = acelerar, F1 = diagnóstico, F2 = rastro da CPU, Esc = sair.
+Controles: setas = direcional, Z = A, X = B, Enter = START, Backspace = SELECT, A = L, S = R, Tab (segurar) = acelerar, Esc = pausar, F5/F8 = salvar/carregar estado, Ctrl+1..4 = slot, Ctrl+O = abrir ROM, Ctrl+R = reiniciar, F11 = tela cheia, F1 = diagnóstico, F2 = rastro da CPU.
 
 Opções: `--mudo` (sem som), `--desvios-para ENDERECO` (desvios para o endereço e as funções chamadas antes deles), `--chamadas-para ENDERECO` (BLs e ponteiros para o endereço exato), `--quem-chama ENDERECO` (função que contém o endereço e quem a chama), `--rastrear-texto "TEXTO"` (acha um texto do jogo na ROM, os ponteiros para ele, a função que o exibe e quem chama essa função), `--dump ENDERECO:TAMANHO` (mostra a memória em hexadecimal, ex.: `--dump 080C2580:100`), `--sonda` (registra no terminal acessos que costumam revelar imprecisões: leituras da BIOS, open bus, registradores só-escrita, timers e WAITCNT), `--bios gba_bios.bin` (16 KB, extraída do seu próprio console), `--test-pattern` (desenha um degradê na VRAM para validar barramento → PPU → tela), `--scale N` (padrão 3). `Esc` fecha.
 
-## Save
+## Save e save states
+
+As preferências (jogos recentes, escala, volume, teclas) ficam em `gbaemu.ini`, na pasta de dados do usuário (no Windows, `%APPDATA%\gbaemu\gbaemu`).
+
+Save states ficam ao lado da ROM (`.ss1` a `.ss4`). Eles guardam o estado do console, mas não o save do cartucho: carregar um estado antigo não apaga o progresso salvo pelo próprio jogo.
+
 
 O save fica ao lado da ROM, com o mesmo nome e extensão `.sav` (por exemplo `ROGUE-2.2.1.sav`). Ele é gravado a cada ~5 segundos se algo mudou e ao fechar o emulador. Se já existir um `.sav` de tamanho inesperado, ele é preservado e o emulador grava em `.gbaemu.sav`.
 
@@ -56,6 +69,6 @@ O save fica ao lado da ROM, com o mesmo nome e extensão `.sav` (por exemplo `RO
 
 ```
 src/core/      núcleo sem dependências (gba = console completo; bus, cartucho, save, cpu ARM/Thumb, BIOS HLE, dma, timers, ppu, apu (áudio), analysis = ferramentas de engenharia reversa)
-src/frontend/  janela SDL2
+src/frontend/  aplicação (SDL2 + Dear ImGui): app, ui, config, diagnóstico, diálogo de arquivos
 tests/         testes do núcleo, da CPU, do sistema, do vídeo e do áudio
 ```

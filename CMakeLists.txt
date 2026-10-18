@@ -64,10 +64,44 @@ if(MSVC)
 endif()
 add_test(NAME audio COMMAND gba_audio_tests)
 
+add_executable(gba_state_tests tests/test_state.cpp)
+target_link_libraries(gba_state_tests PRIVATE gba_core)
+if(MSVC)
+  target_compile_options(gba_state_tests PRIVATE /utf-8)
+endif()
+add_test(NAME state COMMAND gba_state_tests)
+
 find_package(SDL2 CONFIG)
 if(SDL2_FOUND)
-  add_executable(gbaemu src/frontend/main.cpp)
-  target_link_libraries(gbaemu PRIVATE gba_core SDL2::SDL2 SDL2::SDL2main)
+  # Dear ImGui: baixado do repositório oficial numa versão fixa e compilado junto
+  # (não depende das opções do pacote do vcpkg, que mudam de nome entre versões).
+  include(FetchContent)
+  FetchContent_Declare(imgui
+    GIT_REPOSITORY https://github.com/ocornut/imgui.git
+    GIT_TAG v1.91.9
+    GIT_SHALLOW TRUE)
+  FetchContent_MakeAvailable(imgui)
+  add_library(imgui_sdl STATIC
+    ${imgui_SOURCE_DIR}/imgui.cpp
+    ${imgui_SOURCE_DIR}/imgui_draw.cpp
+    ${imgui_SOURCE_DIR}/imgui_tables.cpp
+    ${imgui_SOURCE_DIR}/imgui_widgets.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
+    ${imgui_SOURCE_DIR}/backends/imgui_impl_sdlrenderer2.cpp)
+  target_include_directories(imgui_sdl PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
+  target_link_libraries(imgui_sdl PUBLIC SDL2::SDL2)
+
+  add_executable(gbaemu
+    src/frontend/main.cpp
+    src/frontend/app.cpp
+    src/frontend/ui.cpp
+    src/frontend/config.cpp
+    src/frontend/diagnostics.cpp
+    src/frontend/file_dialog.cpp)
+  target_link_libraries(gbaemu PRIVATE gba_core imgui_sdl SDL2::SDL2 SDL2::SDL2main)
+  if(WIN32)
+    target_link_libraries(gbaemu PRIVATE comdlg32) # diálogo "Abrir arquivo"
+  endif()
   if(MSVC)
     target_compile_options(gbaemu PRIVATE /utf-8)
   endif()

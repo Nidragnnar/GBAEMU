@@ -582,3 +582,24 @@ int Cpu::armBlockTransfer(uint32_t instr) {
 }
 
 } // namespace gba
+
+namespace gba {
+
+void Cpu::serialize(StateArchive& ar) {
+    ar.value(r_);
+    ar.value(cpsr_);
+    ar.value(usrHi_);
+    ar.value(fiqHi_);
+    ar.value(bankSp_);
+    ar.value(bankLr_);
+    ar.value(spsr_);
+    ar.value(pipe_);
+    ar.value(flushed_);
+    ar.value(hleBios_);
+    ar.value(halted_);
+    ar.value(intrWaitFlags_);
+    ar.value(waitActive_);
+    ar.value(waitResumePc_);
+}
+
+} // namespace gba

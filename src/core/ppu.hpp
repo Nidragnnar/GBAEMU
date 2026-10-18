@@ -7,8 +7,10 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 
 #include "bus.hpp"
+#include "state.hpp"
 
 namespace gba {
 
@@ -27,6 +29,7 @@ public:
     void startLine(int line);
     void startHBlank();
     void onIoWrite(uint32_t offset); // escrita nos pontos de referência afins recarrega os internos
+    void serialize(StateArchive& ar) { ar.value(line_); ar.value(refX_); ar.value(refY_); ar.value(fb_); }
 
     // Renderiza o quadro inteiro de uma vez (usado quando a CPU não está rodando).
     void renderFrame();
@@ -64,7 +67,10 @@ private:
     Bus& bus_;
     int line_ = 0;
     std::array<int32_t, 2> refX_{}, refY_{}; // pontos de referência internos de BG2 e BG3 (8.8 com sinal)
-    std::array<uint32_t, kScreenWidth * kScreenHeight> fb_{};
+    // A imagem (150 KB) fica no heap, pelo mesmo motivo das memórias do barramento.
+    std::unique_ptr<std::array<uint32_t, kScreenWidth * kScreenHeight>> fbStorage_ =
+        std::make_unique<std::array<uint32_t, kScreenWidth * kScreenHeight>>();
+    std::array<uint32_t, kScreenWidth * kScreenHeight>& fb_ = *fbStorage_;
 };
 
 } // namespace gba

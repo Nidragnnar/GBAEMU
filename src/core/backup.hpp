@@ -5,6 +5,7 @@
 #include <cstdint>
 #include <string>
 #include <vector>
+#include "state.hpp"
 
 namespace gba {
 
@@ -33,6 +34,8 @@ public:
     bool load(const std::vector<uint8_t>& saved); // false se o tamanho não bate com o tipo
     bool dirty() const { return dirty_; }
     void clearDirty() { dirty_ = false; }
+    // Estado do protocolo (comandos em andamento). O conteúdo do save fica de fora: ele pertence ao cartucho.
+    void serialize(StateArchive& ar);
 
     // Contadores para diagnóstico.
     struct Stats { uint64_t reads = 0, writes = 0, idRequests = 0, idReads = 0; };

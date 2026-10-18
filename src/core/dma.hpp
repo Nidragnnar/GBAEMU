@@ -6,6 +6,7 @@
 #include <cstdint>
 
 #include "bus.hpp"
+#include "state.hpp"
 
 namespace gba {
 
@@ -19,6 +20,7 @@ public:
     void onIoWrite(uint32_t offset); // detecta quando um canal é ligado
     void trigger(Timing timing);     // chamado pelo agendador no VBlank e no HBlank
     void soundRequest(int fifo);     // fila de som A (0) ou B (1) pedindo dados: DMA 1/2 no modo especial
+    void serialize(StateArchive& ar) { for (auto& ch : channels_) ar.value(ch); }
 
 private:
     struct Channel {

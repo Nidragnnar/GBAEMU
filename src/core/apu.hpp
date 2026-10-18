@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "bus.hpp"
+#include "state.hpp"
 
 namespace gba {
 
@@ -31,6 +32,7 @@ public:
         if (sampleTimer_ <= 0) produceSamples();
     }
     void onTimerOverflow(int timer, uint32_t count);
+    void serialize(StateArchive& ar);
     // Chamado quando a fila A (0) ou B (1) fica com 16 bytes ou menos: o DMA de som deve reabastecê-la.
     void setFifoRequest(std::function<void(int fifo)> request) { fifoRequest_ = std::move(request); }
 

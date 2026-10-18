@@ -208,3 +208,27 @@ uint16_t Backup::eepromRead() {
 }
 
 } // namespace gba
+
+namespace gba {
+
+void Backup::serialize(StateArchive& ar) {
+    Type type = type_;
+    ar.value(type);
+    if (ar.loading() && type != type_) throw std::runtime_error("save state de outro tipo de cartucho");
+    ar.value(stage_);
+    ar.value(idMode_);
+    ar.value(eraseArmed_);
+    ar.value(writeArmed_);
+    ar.value(bankArmed_);
+    ar.value(bank_);
+    int addrBits = eepromAddrBits_;
+    ar.value(addrBits);
+    if (ar.loading() && addrBits) setEepromSize(addrBits);
+    ar.vector(eepromBits_, 256);
+    ar.vector(eepromReply_, 256);
+    uint64_t replyPos = eepromReplyPos_;
+    ar.value(replyPos);
+    eepromReplyPos_ = static_cast<size_t>(replyPos);
+}
+
+} // namespace gba

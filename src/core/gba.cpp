@@ -1,5 +1,8 @@
 #include "gba.hpp"
 
+#include <cstring>
+#include <stdexcept>
+
 namespace gba {
 
 Gba::Gba() {
@@ -12,6 +15,14 @@ Gba::Gba() {
         apu_.onIoWrite(offset);
         if (offset == 0x301 && !(bus_.read8(0x04000301) & 0x80)) cpu_.halt(); // HALTCNT (modo Stop ignorado)
     });
+}
+
+void Gba::loadRom(std::vector<uint8_t> rom) {
+    // Impressão digital da ROM (FNV-1a de 64 bits): garante que um save state só volte no mesmo jogo.
+    uint64_t hash = 0xCBF29CE484222325ull;
+    for (const uint8_t b : rom) hash = (hash ^ b) * 0x100000001B3ull;
+    romHash_ = hash;
+    bus_.loadRom(std::move(rom));
 }
 
 void Gba::reset() {
@@ -57,6 +68,61 @@ void Gba::runFrame() {
         ppu_.startHBlank();
         if (line < kScreenHeight) dma_.trigger(Dma::Timing::HBlank); // DMA de HBlank só nas linhas visíveis
         runCycles(kHBlankCycles);
+    }
+}
+
+} // namespace gba
+
+namespace gba {
+
+namespace {
+constexpr char kStateMagic[8] = {'G', 'B', 'A', 'E', 'M', 'U', 'S', 'T'};
+constexpr uint32_t kStateVersion = 1;
+} // namespace
+
+void Gba::serialize(StateArchive& ar) {
+    char magic[8];
+    std::memcpy(magic, kStateMagic, sizeof magic);
+    ar.value(magic);
+    if (ar.loading() && std::memcmp(magic, kStateMagic, sizeof magic) != 0) {
+        throw std::runtime_error("o arquivo não é um save state do gbaemu");
+    }
+    uint32_t version = kStateVersion;
+    ar.value(version);
+    if (ar.loading() && version != kStateVersion) {
+        throw std::runtime_error("save state de outra versão do gbaemu");
+    }
+    uint64_t hash = romHash_;
+    ar.value(hash);
+    if (ar.loading() && hash != romHash_) throw std::runtime_error("save state de outro jogo");
+
+    bus_.serialize(ar);
+    cpu_.serialize(ar);
+    ppu_.serialize(ar);
+    dma_.serialize(ar);
+    timers_.serialize(ar);
+    apu_.serialize(ar);
+    ar.value(cycleBalance_);
+    ar.value(instructions_);
+    ar.value(frames_);
+    if (ar.loading() && !ar.atEnd()) throw std::runtime_error("save state com dados sobrando (corrompido?)");
+}
+
+std::vector<uint8_t> Gba::saveState() {
+    auto ar = StateArchive::writer();
+    serialize(ar);
+    return ar.data();
+}
+
+void Gba::loadState(const std::vector<uint8_t>& data) {
+    const std::vector<uint8_t> backup = saveState(); // se der errado no meio, volta a este ponto
+    try {
+        auto ar = StateArchive::reader(data);
+        serialize(ar);
+    } catch (...) {
+        auto restore = StateArchive::reader(backup);
+        serialize(restore);
+        throw;
     }
 }
 
