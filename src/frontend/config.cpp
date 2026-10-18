@@ -8,11 +8,21 @@
 
 #include "core/cartridge.hpp"
 
-Config::Config() {
-    keys = {SDL_SCANCODE_Z,     SDL_SCANCODE_X,    SDL_SCANCODE_BACKSPACE, SDL_SCANCODE_RETURN,
+std::array<int, 10> Config::defaultKeys() {
+    return {SDL_SCANCODE_Z,     SDL_SCANCODE_X,    SDL_SCANCODE_BACKSPACE, SDL_SCANCODE_RETURN,
             SDL_SCANCODE_RIGHT, SDL_SCANCODE_LEFT, SDL_SCANCODE_UP,        SDL_SCANCODE_DOWN,
             SDL_SCANCODE_S,     SDL_SCANCODE_A};
 }
+
+// Pela posição, como no GBA: o A fica à direita (B no Xbox, círculo no PlayStation) e o B embaixo.
+std::array<int, 10> Config::defaultPadButtons() {
+    return {SDL_CONTROLLER_BUTTON_B,          SDL_CONTROLLER_BUTTON_A,         SDL_CONTROLLER_BUTTON_BACK,
+            SDL_CONTROLLER_BUTTON_START,      SDL_CONTROLLER_BUTTON_DPAD_RIGHT, SDL_CONTROLLER_BUTTON_DPAD_LEFT,
+            SDL_CONTROLLER_BUTTON_DPAD_UP,   SDL_CONTROLLER_BUTTON_DPAD_DOWN,  SDL_CONTROLLER_BUTTON_RIGHTSHOULDER,
+            SDL_CONTROLLER_BUTTON_LEFTSHOULDER};
+}
+
+Config::Config() : keys(defaultKeys()), padButtons(defaultPadButtons()) {}
 
 void Config::addRecent(const std::string& path) {
     recentRoms.erase(std::remove(recentRoms.begin(), recentRoms.end(), path), recentRoms.end());
@@ -35,10 +45,11 @@ Config Config::load(const std::string& file) {
             else if (key == "mudo") c.mute = value == "1";
             else if (key == "volume") c.volume = std::clamp(std::stoi(value), 0, 100);
             else if (key == "slot") c.stateSlot = std::clamp(std::stoi(value), 1, 4);
-            else if (key == "teclas") {
+            else if (key == "teclas" || key == "controle") {
+                auto& target = key == "teclas" ? c.keys : c.padButtons;
                 std::stringstream ss(value);
                 std::string item;
-                for (size_t i = 0; i < c.keys.size() && std::getline(ss, item, ','); ++i) c.keys[i] = std::stoi(item);
+                for (size_t i = 0; i < target.size() && std::getline(ss, item, ','); ++i) target[i] = std::stoi(item);
             }
         } catch (const std::exception&) {
             // valor inválido: mantém o padrão
@@ -49,10 +60,12 @@ Config Config::load(const std::string& file) {
 
 void Config::save(const std::string& file) const {
     std::ostringstream out;
-    out << "# Preferências do gbaemu\n";
+    out << "# Preferências do NiGBA\n";
     out << "escala=" << scale << "\nmudo=" << (mute ? 1 : 0) << "\nvolume=" << volume << "\nslot=" << stateSlot << "\n";
     out << "teclas=";
     for (size_t i = 0; i < keys.size(); ++i) out << (i ? "," : "") << keys[i];
+    out << "\ncontrole=";
+    for (size_t i = 0; i < padButtons.size(); ++i) out << (i ? "," : "") << padButtons[i];
     out << "\n";
     for (const auto& r : recentRoms) out << "recente=" << r << "\n";
     const std::string text = out.str();

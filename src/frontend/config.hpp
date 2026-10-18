@@ -1,5 +1,5 @@
 #pragma once
-// Preferências do usuário, guardadas em gbaemu.ini (texto simples, "chave=valor").
+// Preferências do usuário, guardadas em NiGBA.ini (texto simples, "chave=valor").
 
 #include <array>
 #include <string>
@@ -13,8 +13,12 @@ struct Config {
     int stateSlot = 1;                   // 1-4
     // Teclas (scancodes do SDL) na ordem dos bits do KEYINPUT: A B SELECT START → ← ↑ ↓ R L.
     std::array<int, 10> keys{};
+    // Botões do controle (SDL_GameControllerButton), mesma ordem; -1 = nenhum.
+    std::array<int, 10> padButtons{};
 
     Config();
+    static std::array<int, 10> defaultKeys();
+    static std::array<int, 10> defaultPadButtons();
     void addRecent(const std::string& path);
     static Config load(const std::string& file);
     void save(const std::string& file) const;

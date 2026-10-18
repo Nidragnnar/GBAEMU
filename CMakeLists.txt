@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(gbaemu CXX)
+project(NiGBA CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -91,19 +91,19 @@ if(SDL2_FOUND)
   target_include_directories(imgui_sdl PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
   target_link_libraries(imgui_sdl PUBLIC SDL2::SDL2)
 
-  add_executable(gbaemu
+  add_executable(NiGBA
     src/frontend/main.cpp
     src/frontend/app.cpp
     src/frontend/ui.cpp
     src/frontend/config.cpp
     src/frontend/diagnostics.cpp
     src/frontend/file_dialog.cpp)
-  target_link_libraries(gbaemu PRIVATE gba_core imgui_sdl SDL2::SDL2 SDL2::SDL2main)
+  target_link_libraries(NiGBA PRIVATE gba_core imgui_sdl SDL2::SDL2 SDL2::SDL2main)
   if(WIN32)
-    target_link_libraries(gbaemu PRIVATE comdlg32) # diálogo "Abrir arquivo"
+    target_link_libraries(NiGBA PRIVATE comdlg32) # diálogo "Abrir arquivo"
   endif()
   if(MSVC)
-    target_compile_options(gbaemu PRIVATE /utf-8)
+    target_compile_options(NiGBA PRIVATE /utf-8)
   endif()
 else()
   message(WARNING "SDL2 não encontrado: só o núcleo e os testes serão compilados.")

@@ -1,4 +1,4 @@
-// Interface do gbaemu com o Dear ImGui: tema pastel, barra de menus, tela de boas-vindas e avisos.
+// Interface do NiGBA com o Dear ImGui: tema pastel, barra de menus, tela de boas-vindas e avisos.
 
 #include <imgui.h>
 
@@ -22,6 +22,21 @@ const ImVec4 kPlum{0.38f, 0.24f, 0.40f, 1.0f};
 const ImVec4 kPlumSoft{0.62f, 0.50f, 0.64f, 1.0f};
 
 const char* const kKeyNames[10] = {"A", "B", "SELECT", "START", "Direita", "Esquerda", "Cima", "Baixo", "R", "L"};
+
+// Nomes dos botões do controle (ordem do SDL_GameControllerButton), com os rótulos do Xbox.
+const char* padButtonName(int button) {
+    static const char* const kNames[] = {
+        "A (baixo)",          "B (direita)",        "X (esquerda)",       "Y (cima)",
+        "Back / Select",      "Guia",               "Start",              "Clique analógico esq.",
+        "Clique analógico dir.", "LB / L1",         "RB / R1",            "Direcional cima",
+        "Direcional baixo",   "Direcional esquerda", "Direcional direita", "Botão extra",
+        "Pá 1",               "Pá 2",               "Pá 3",               "Pá 4",
+        "Touchpad",
+    };
+    if (button < 0) return "(nenhum)";
+    if (button < static_cast<int>(sizeof kNames / sizeof kNames[0])) return kNames[button];
+    return "?";
+}
 } // namespace
 
 void App::applyTheme() {
@@ -92,8 +107,7 @@ void App::loadFonts() {
 }
 
 // Coração desenhado com dois círculos e um triângulo (não depende de a fonte ter emoji).
-void App::drawHeart(float cx, float cy, float size, uint32_t color) const {
-    ImDrawList* dl = ImGui::GetForegroundDrawList();
+void App::drawHeart(ImDrawList* dl, float cx, float cy, float size, uint32_t color) const {
     const float r = size * 0.5f;
     dl->AddCircleFilled(ImVec2(cx - r * 0.5f, cy), r * 0.55f, color, 20);
     dl->AddCircleFilled(ImVec2(cx + r * 0.5f, cy), r * 0.55f, color, 20);
@@ -189,7 +203,7 @@ void App::drawMenuBar() {
 
     if (ImGui::BeginMenu("Ajuda")) {
         if (ImGui::MenuItem("Controles")) showControls_ = true;
-        if (ImGui::MenuItem("Sobre o gbaemu")) showAbout_ = true;
+        if (ImGui::MenuItem("Sobre o NiGBA")) showAbout_ = true;
         ImGui::EndMenu();
     }
 
@@ -217,7 +231,7 @@ void App::drawWelcome() {
         const float rise = std::fmod(t * (0.03f + 0.01f * (i % 3)) + i * 0.21f, 1.0f);
         const float x = pos.x + size.x * fx + std::sin(t * 1.3f + static_cast<float>(i)) * 12.0f;
         const float y = pos.y + size.y * (1.05f - rise * 1.2f);
-        drawHeart(x, y, 16.0f + 6.0f * static_cast<float>(i % 3), heartColors[i % 3]);
+        drawHeart(bg, x, y, 16.0f + 6.0f * static_cast<float>(i % 3), heartColors[i % 3]);
     }
 
     // Cartão central.
@@ -228,13 +242,13 @@ void App::drawWelcome() {
                  ImGuiWindowFlags_NoDecoration | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings |
                      ImGuiWindowFlags_AlwaysAutoResize | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
-    const char* title = "gbaemu";
+    const char* title = "NiGBA";
     if (titleFont_) ImGui::PushFont(titleFont_);
     ImGui::SetCursorPosX((cardW - ImGui::CalcTextSize(title).x) * 0.5f);
     ImGui::TextColored(kPinkDeep, "%s", title);
     if (titleFont_) ImGui::PopFont();
 
-    const char* subtitle = "seu emulador de Game Boy Advance";
+    const char* subtitle = "Seu Emulador de Game Boy Advance";
     ImGui::SetCursorPosX((cardW - ImGui::CalcTextSize(subtitle).x) * 0.5f);
     ImGui::TextDisabled("%s", subtitle);
     ImGui::Spacing();
@@ -277,7 +291,7 @@ void App::drawOverlays() {
         fg->AddRectFilled(ImVec2(c.x - ts.x / 2 - 22, c.y - ts.y / 2 - 12), ImVec2(c.x + ts.x / 2 + 22, c.y + ts.y / 2 + 12),
                           IM_COL32(255, 244, 250, 235), 999.0f);
         fg->AddText(ImVec2(c.x - ts.x / 2, c.y - ts.y / 2), ImGui::GetColorU32(kPlum), text);
-        drawHeart(c.x - ts.x / 2 - 8, c.y - 3, 12, IM_COL32(240, 140, 190, 255));
+        drawHeart(fg, c.x - ts.x / 2 - 8, c.y - 3, 12, IM_COL32(240, 140, 190, 255));
     }
 
     // Aviso temporário (save state, erros): canto inferior esquerdo, sumindo devagar.
@@ -287,7 +301,7 @@ void App::drawOverlays() {
         const ImVec2 ts = ImGui::CalcTextSize(toast_.c_str());
         const ImVec2 p(vp->WorkPos.x + 14, vp->WorkPos.y + vp->WorkSize.y - ts.y - 28);
         fg->AddRectFilled(p, ImVec2(p.x + ts.x + 44, p.y + ts.y + 16), IM_COL32(255, 238, 247, static_cast<int>(235 * alpha)), 999.0f);
-        drawHeart(p.x + 16, p.y + ts.y / 2 + 5, 11, IM_COL32(240, 140, 190, static_cast<int>(255 * alpha)));
+        drawHeart(fg, p.x + 16, p.y + ts.y / 2 + 5, 11, IM_COL32(240, 140, 190, static_cast<int>(255 * alpha)));
         fg->AddText(ImVec2(p.x + 30, p.y + 8), IM_COL32(97, 61, 102, static_cast<int>(255 * alpha)), toast_.c_str());
     }
 }
@@ -309,32 +323,72 @@ void App::drawStoppedPopup() {
     ImGui::EndPopup();
 }
 
+// Uma linha da tabela de controles: nome do botão do GBA e a tecla/botão atual (clique para trocar).
+void App::drawBindingRow(int index, bool pad) {
+    const size_t i = static_cast<size_t>(index);
+    ImGui::AlignTextToFramePadding();
+    ImGui::Text("%s", kKeyNames[i]);
+    ImGui::SameLine(110);
+    const bool waiting = capture_ == (pad ? Capture::Pad : Capture::Key) && captureIndex_ == index;
+    std::string label = waiting ? "aperte..." :
+                        pad     ? padButtonName(config_.padButtons[i]) :
+                                  SDL_GetScancodeName(static_cast<SDL_Scancode>(config_.keys[i]));
+    if (label.empty()) label = "(nenhuma)";
+    label += std::string(pad ? "##pad" : "##tecla") + std::to_string(index);
+    if (waiting) ImGui::PushStyleColor(ImGuiCol_Button, kLavenderStrong);
+    if (ImGui::Button(label.c_str(), ImVec2(210, 0))) {
+        capture_ = pad ? Capture::Pad : Capture::Key;
+        captureIndex_ = index;
+    }
+    if (waiting) ImGui::PopStyleColor();
+}
+
 void App::drawControlsWindow() {
-    ImGui::SetNextWindowSize(ImVec2(380, 0), ImGuiCond_Appearing);
+    ImGui::SetNextWindowSize(ImVec2(400, 0), ImGuiCond_Appearing);
     if (ImGui::Begin("Controles", &showControls_, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextColored(kPinkDeep, "Botões do GBA");
-        for (size_t i = 0; i < config_.keys.size(); ++i) {
-            ImGui::BulletText("%-9s  %s", kKeyNames[i], SDL_GetScancodeName(static_cast<SDL_Scancode>(config_.keys[i])));
+        if (ImGui::BeginTabBar("##abas")) {
+            if (ImGui::BeginTabItem("Teclado")) {
+                for (int i = 0; i < 10; ++i) drawBindingRow(i, false);
+                ImGui::Spacing();
+                if (ImGui::Button("Restaurar o padrão##teclado")) { config_.keys = Config::defaultKeys(); config_.save(configPath_); }
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("Controle")) {
+                if (pads_.empty()) ImGui::TextDisabled("Nenhum controle conectado (é só conectar).");
+                else ImGui::TextColored(kPinkDeep, "%s", padName().c_str());
+                ImGui::Spacing();
+                for (int i = 0; i < 10; ++i) drawBindingRow(i, true);
+                ImGui::Spacing();
+                ImGui::TextDisabled("Analógico esquerdo: direcional  |  Gatilho direito: acelerar");
+                if (ImGui::Button("Restaurar o padrão##controle")) { config_.padButtons = Config::defaultPadButtons(); config_.save(configPath_); }
+                ImGui::EndTabItem();
+            }
+            if (ImGui::BeginTabItem("Atalhos")) {
+                ImGui::BulletText("Tab (segurar)   acelerar");
+                ImGui::BulletText("Esc             pausar / continuar");
+                ImGui::BulletText("F5 / F8         salvar / carregar estado");
+                ImGui::BulletText("Ctrl+1..4       escolher o slot");
+                ImGui::BulletText("Ctrl+O / Ctrl+R abrir ROM / reiniciar");
+                ImGui::BulletText("F11             tela cheia");
+                ImGui::BulletText("F1 / F2         diagnóstico no terminal");
+                ImGui::EndTabItem();
+            }
+            ImGui::EndTabBar();
         }
-        ImGui::Spacing();
-        ImGui::TextColored(kPinkDeep, "Atalhos");
-        ImGui::BulletText("Tab (segurar)   acelerar");
-        ImGui::BulletText("Esc             pausar / continuar");
-        ImGui::BulletText("F5 / F8         salvar / carregar estado");
-        ImGui::BulletText("Ctrl+1..4       escolher o slot");
-        ImGui::BulletText("Ctrl+O / Ctrl+R abrir ROM / reiniciar");
-        ImGui::BulletText("F11             tela cheia");
-        ImGui::BulletText("F1 / F2         diagnóstico no terminal");
-        ImGui::Spacing();
-        ImGui::TextDisabled("Trocar as teclas e usar um controle: na próxima etapa!");
+        if (capture_ != Capture::None) {
+            ImGui::Spacing();
+            ImGui::TextColored(kPinkDeep, capture_ == Capture::Key ? "Aperte a tecla desejada (Esc cancela)"
+                                                                   : "Aperte o botão no controle (Esc cancela)");
+        }
     }
     ImGui::End();
+    if (!showControls_) capture_ = Capture::None; // fechou a janela no meio de um remapeamento
 }
 
 void App::drawAboutWindow() {
     ImGui::SetNextWindowSize(ImVec2(400, 0), ImGuiCond_Appearing);
-    if (ImGui::Begin("Sobre o gbaemu", &showAbout_, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
-        ImGui::TextColored(kPinkDeep, "gbaemu");
+    if (ImGui::Begin("Sobre o NiGBA", &showAbout_, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_AlwaysAutoResize)) {
+        ImGui::TextColored(kPinkDeep, "NiGBA");
         ImGui::TextWrapped("Um emulador de Game Boy Advance escrito do zero em C++20, a partir da documentação "
                            "do hardware (GBATEK).");
         ImGui::Spacing();

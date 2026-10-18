@@ -1,5 +1,5 @@
-// gbaemu: emulador de Game Boy Advance.
-// Uso: gbaemu [rom.gba] [--bios arquivo] [--scale N] [--mudo] [--test-pattern] [--sonda]
+// NiGBA: emulador de Game Boy Advance.
+// Uso: NiGBA [rom.gba] [--bios arquivo] [--scale N] [--mudo] [--test-pattern] [--sonda]
 //             [--dump END:TAM] [--rastrear-texto TEXTO] [--quem-chama END] [--chamadas-para END]
 //             [--desvios-para END]
 // Sem ROM, abre a tela inicial (dá para escolher ou arrastar um jogo).

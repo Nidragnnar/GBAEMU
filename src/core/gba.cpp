@@ -85,12 +85,12 @@ void Gba::serialize(StateArchive& ar) {
     std::memcpy(magic, kStateMagic, sizeof magic);
     ar.value(magic);
     if (ar.loading() && std::memcmp(magic, kStateMagic, sizeof magic) != 0) {
-        throw std::runtime_error("o arquivo não é um save state do gbaemu");
+        throw std::runtime_error("o arquivo não é um save state do NiGBA");
     }
     uint32_t version = kStateVersion;
     ar.value(version);
     if (ar.loading() && version != kStateVersion) {
-        throw std::runtime_error("save state de outra versão do gbaemu");
+        throw std::runtime_error("save state de outra versão do NiGBA");
     }
     uint64_t hash = romHash_;
     ar.value(hash);

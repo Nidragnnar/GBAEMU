@@ -1,4 +1,4 @@
-# gbaemu
+# NiGBA
 
 Emulador de Game Boy Advance em C++20, escrito do zero usando o GBATEK como especificação.
 
@@ -26,7 +26,7 @@ Emulador de Game Boy Advance em C++20, escrito do zero usando o GBATEK como espe
 - [x] Ritmo pela placa de som (velocidade correta em qualquer monitor) e aceleração com Tab
 - [x] Save states (4 slots), com verificação de jogo e de versão
 - [x] Interface com Dear ImGui: menus, abrir ROM (diálogo, arrastar e soltar, recentes), pausar, reiniciar, escala, tela cheia, volume, tema pastel
-- [ ] Configuração de teclas e controle (gamepad)
+- [x] Configuração de teclas e controle (gamepad): remapeamento na janela Controles, analógico como direcional, gatilho direito acelera
 - [ ] Janelas de depuração (CPU, memória, VRAM, paletas, sprites)
 
 ## Compilar no Windows
@@ -47,23 +47,23 @@ O Dear ImGui (interface) é baixado automaticamente pelo CMake na primeira confi
 Sem argumentos, abre a tela inicial: escolha um jogo pelo menu, arraste o `.gba` para a janela ou clique num dos recentes. Também dá para passar a ROM direto:
 
 ```bat
-build\Release\gbaemu.exe jogo.gba --test-pattern
+build\Release\NiGBA.exe jogo.gba --test-pattern
 ```
 
 Sem `--test-pattern`, a CPU executa a ROM. Se ela encontrar algo ainda não implementado (como uma função da BIOS), para e mostra o motivo no terminal. A barra de título mostra o PC atual.
 
-Controles: setas = direcional, Z = A, X = B, Enter = START, Backspace = SELECT, A = L, S = R, Tab (segurar) = acelerar, Esc = pausar, F5/F8 = salvar/carregar estado, Ctrl+1..4 = slot, Ctrl+O = abrir ROM, Ctrl+R = reiniciar, F11 = tela cheia, F1 = diagnóstico, F2 = rastro da CPU.
+Controles (todos remapeáveis em Ajuda → Controles; controle/gamepad funciona junto com o teclado): setas = direcional, Z = A, X = B, Enter = START, Backspace = SELECT, A = L, S = R, Tab (segurar) = acelerar, Esc = pausar, F5/F8 = salvar/carregar estado, Ctrl+1..4 = slot, Ctrl+O = abrir ROM, Ctrl+R = reiniciar, F11 = tela cheia, F1 = diagnóstico, F2 = rastro da CPU.
 
 Opções: `--mudo` (sem som), `--desvios-para ENDERECO` (desvios para o endereço e as funções chamadas antes deles), `--chamadas-para ENDERECO` (BLs e ponteiros para o endereço exato), `--quem-chama ENDERECO` (função que contém o endereço e quem a chama), `--rastrear-texto "TEXTO"` (acha um texto do jogo na ROM, os ponteiros para ele, a função que o exibe e quem chama essa função), `--dump ENDERECO:TAMANHO` (mostra a memória em hexadecimal, ex.: `--dump 080C2580:100`), `--sonda` (registra no terminal acessos que costumam revelar imprecisões: leituras da BIOS, open bus, registradores só-escrita, timers e WAITCNT), `--bios gba_bios.bin` (16 KB, extraída do seu próprio console), `--test-pattern` (desenha um degradê na VRAM para validar barramento → PPU → tela), `--scale N` (padrão 3). `Esc` fecha.
 
 ## Save e save states
 
-As preferências (jogos recentes, escala, volume, teclas) ficam em `gbaemu.ini`, na pasta de dados do usuário (no Windows, `%APPDATA%\gbaemu\gbaemu`).
+As preferências (jogos recentes, escala, volume, teclas) ficam em `NiGBA.ini`, na pasta de dados do usuário (no Windows, `%APPDATA%\NiGBA\NiGBA`).
 
 Save states ficam ao lado da ROM (`.ss1` a `.ss4`). Eles guardam o estado do console, mas não o save do cartucho: carregar um estado antigo não apaga o progresso salvo pelo próprio jogo.
 
 
-O save fica ao lado da ROM, com o mesmo nome e extensão `.sav` (por exemplo `ROGUE-2.2.1.sav`). Ele é gravado a cada ~5 segundos se algo mudou e ao fechar o emulador. Se já existir um `.sav` de tamanho inesperado, ele é preservado e o emulador grava em `.gbaemu.sav`.
+O save fica ao lado da ROM, com o mesmo nome e extensão `.sav` (por exemplo `ROGUE-2.2.1.sav`). Ele é gravado a cada ~5 segundos se algo mudou e ao fechar o emulador. Se já existir um `.sav` de tamanho inesperado, ele é preservado e o emulador grava em `.NiGBA.sav`.
 
 ## Estrutura
 

@@ -16,13 +16,13 @@ namespace {
 constexpr uint32_t kAudioTargetBytes = gba::Apu::kSampleRate * 2 * 2 / 20; // 50 ms de som na fila
 constexpr double kFrameSeconds = static_cast<double>(gba::kCyclesPerFrame) / 16777216.0;
 
-std::string defaultConfigPath() {
-    if (char* dir = SDL_GetPrefPath("gbaemu", "gbaemu")) {
-        std::string path = std::string(dir) + "gbaemu.ini";
+std::string prefFile(const char* app, const char* file) {
+    if (char* dir = SDL_GetPrefPath(app, app)) {
+        std::string path = std::string(dir) + file;
         SDL_free(dir);
         return path;
     }
-    return "gbaemu.ini";
+    return file;
 }
 } // namespace
 
@@ -33,8 +33,12 @@ App::~App() { shutdown(); }
 // ---------------------------------------------------------------- ciclo de vida
 
 bool App::init() {
-    configPath_ = defaultConfigPath();
-    config_ = Config::load(configPath_);
+    configPath_ = prefFile("NiGBA", "NiGBA.ini");
+    // Primeira execução com o nome novo: importa as preferências da época em que se chamava gbaemu.
+    const std::string legacyPath = prefFile("gbaemu", "gbaemu.ini");
+    const bool useLegacy = !std::filesystem::exists(gba::utf8Path(configPath_)) &&
+                           std::filesystem::exists(gba::utf8Path(legacyPath));
+    config_ = Config::load(useLegacy ? legacyPath : configPath_);
     if (options_.scale > 0) config_.scale = options_.scale;
     if (options_.mute) config_.mute = true;
 
@@ -46,7 +50,7 @@ bool App::init() {
 
     // A altura da barra de menus depende da fonte; a janela é criada já com espaço para ela.
     menuBarHeight_ = 18.0f + 2 * 6.0f;
-    window_ = SDL_CreateWindow("gbaemu", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+    window_ = SDL_CreateWindow("NiGBA", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
                                gba::kScreenWidth * config_.scale,
                                gba::kScreenHeight * config_.scale + static_cast<int>(menuBarHeight_),
                                SDL_WINDOW_RESIZABLE);
@@ -87,6 +91,8 @@ bool App::init() {
 void App::shutdown() {
     if (!window_) return;
     saveBackupNow();
+    for (SDL_GameController* pad : pads_) SDL_GameControllerClose(pad);
+    pads_.clear();
     config_.save(configPath_);
     ImGui_ImplSDLRenderer2_Shutdown();
     ImGui_ImplSDL2_Shutdown();
@@ -114,7 +120,52 @@ int App::run() {
     return 0;
 }
 
+void App::openPad(int deviceIndex) {
+    if (!SDL_IsGameController(deviceIndex)) return;
+    if (SDL_GameController* pad = SDL_GameControllerOpen(deviceIndex)) {
+        pads_.push_back(pad);
+        toast(std::string("Controle conectado: ") + (SDL_GameControllerName(pad) ? SDL_GameControllerName(pad) : "?"));
+    }
+}
+
+void App::closePad(int32_t instanceId) {
+    for (auto it = pads_.begin(); it != pads_.end(); ++it) {
+        if (SDL_JoystickInstanceID(SDL_GameControllerGetJoystick(*it)) == instanceId) {
+            SDL_GameControllerClose(*it);
+            pads_.erase(it);
+            toast("Controle desconectado");
+            return;
+        }
+    }
+}
+
+std::string App::padName() const {
+    if (pads_.empty()) return "";
+    const char* name = SDL_GameControllerName(pads_.front());
+    return name ? name : "Controle";
+}
+
 void App::handleEvent(const SDL_Event& ev) {
+    if (ev.type == SDL_CONTROLLERDEVICEADDED) { openPad(ev.cdevice.which); return; }
+    if (ev.type == SDL_CONTROLLERDEVICEREMOVED) { closePad(ev.cdevice.which); return; }
+
+    // Remapeando: a próxima tecla (ou botão do controle) vira a nova escolha. Esc cancela.
+    if (capture_ != Capture::None) {
+        if (ev.type == SDL_KEYDOWN && !ev.key.repeat) {
+            if (ev.key.keysym.sym != SDLK_ESCAPE && capture_ == Capture::Key) {
+                config_.keys[static_cast<size_t>(captureIndex_)] = ev.key.keysym.scancode;
+                config_.save(configPath_);
+            }
+            capture_ = Capture::None;
+        } else if (ev.type == SDL_CONTROLLERBUTTONDOWN && capture_ == Capture::Pad) {
+            config_.padButtons[static_cast<size_t>(captureIndex_)] = ev.cbutton.button;
+            config_.save(configPath_);
+            capture_ = Capture::None;
+        }
+        if (ev.type == SDL_QUIT) running_ = false;
+        return;
+    }
+
     if (ev.type == SDL_QUIT) running_ = false;
     if (ev.type == SDL_WINDOWEVENT && ev.window.event == SDL_WINDOWEVENT_CLOSE) running_ = false;
     if (ev.type == SDL_DROPFILE) { // ROM arrastada para a janela
@@ -189,20 +240,47 @@ void App::runEmulation() {
 }
 
 uint16_t App::readKeys() const {
-    // Com um menu aberto ou um campo de texto em foco, o teclado é da interface, não do jogo.
-    if (ImGui::GetIO().WantCaptureKeyboard) return 0x03FF;
-    const Uint8* state = SDL_GetKeyboardState(nullptr);
+    if (capture_ != Capture::None) return 0x03FF; // remapeando: nada chega ao jogo
     uint16_t keys = 0x03FF;
-    for (size_t i = 0; i < config_.keys.size(); ++i) {
-        if (config_.keys[i] > 0 && config_.keys[i] < SDL_NUM_SCANCODES && state[config_.keys[i]]) {
-            keys = static_cast<uint16_t>(keys & ~(1u << i));
+    const auto press = [&keys](size_t bit) { keys = static_cast<uint16_t>(keys & ~(1u << bit)); };
+
+    // Teclado (com um menu aberto ou uma janela em foco, o teclado é da interface, não do jogo).
+    if (!ImGui::GetIO().WantCaptureKeyboard) {
+        const Uint8* state = SDL_GetKeyboardState(nullptr);
+        for (size_t i = 0; i < config_.keys.size(); ++i) {
+            if (config_.keys[i] > 0 && config_.keys[i] < SDL_NUM_SCANCODES && state[config_.keys[i]]) press(i);
         }
+    }
+
+    // Controles: botões mapeados e o analógico esquerdo como direcional.
+    constexpr Sint16 kDeadZone = 12000;
+    for (SDL_GameController* pad : pads_) {
+        for (size_t i = 0; i < config_.padButtons.size(); ++i) {
+            const int b = config_.padButtons[i];
+            if (b >= 0 && SDL_GameControllerGetButton(pad, static_cast<SDL_GameControllerButton>(b))) press(i);
+        }
+        const Sint16 x = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTX);
+        const Sint16 y = SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_LEFTY);
+        if (x > kDeadZone) press(4);
+        if (x < -kDeadZone) press(5);
+        if (y < -kDeadZone) press(6);
+        if (y > kDeadZone) press(7);
     }
     return keys;
 }
 
+// Gatilho direito (RT/R2) acelera, como o Tab.
+bool App::padFastForward() const {
+    for (SDL_GameController* pad : pads_) {
+        if (SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > 16000) return true;
+    }
+    return false;
+}
+
 void App::render() {
-    fastForward_ = !ImGui::GetIO().WantCaptureKeyboard && SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_TAB] != 0;
+    fastForward_ = capture_ == Capture::None &&
+                   ((!ImGui::GetIO().WantCaptureKeyboard && SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_TAB] != 0) ||
+                    padFastForward());
 
     SDL_SetRenderDrawColor(renderer_, 0xF3, 0xE6, 0xF7, 0xFF); // lavanda clarinho nas bordas
     SDL_RenderClear(renderer_);
@@ -231,7 +309,7 @@ void App::render() {
     SDL_RenderPresent(renderer_);
 
     char title[160];
-    std::snprintf(title, sizeof title, "gbaemu%s%s%s", gameTitle_.empty() ? "" : " - ", gameTitle_.c_str(),
+    std::snprintf(title, sizeof title, "NiGBA%s%s%s", gameTitle_.empty() ? "" : " - ", gameTitle_.c_str(),
                   fastForward_ ? "  [acelerado]" : "");
     SDL_SetWindowTitle(window_, title);
 }
@@ -265,7 +343,7 @@ void App::openRom(const std::string& path) {
     if (std::filesystem::exists(gba::utf8Path(savePath_))) {
         try {
             if (!backup.load(gba::readFile(savePath_))) {
-                savePath_ = gba::pathToUtf8(gba::utf8Path(path).replace_extension(".gbaemu.sav"));
+                savePath_ = gba::pathToUtf8(gba::utf8Path(path).replace_extension(".NiGBA.sav"));
                 toast("O .sav existente tem tamanho inesperado e foi preservado");
             }
         } catch (const std::exception& e) {

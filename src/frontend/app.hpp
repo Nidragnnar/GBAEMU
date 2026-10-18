@@ -14,6 +14,7 @@
 #include "frontend/config.hpp"
 
 struct ImFont;
+struct ImDrawList;
 
 struct Options {
     std::string romPath;  // opcional: abre direto este jogo
@@ -54,6 +55,10 @@ private:
     std::string statePath(int slot) const;
     bool stateExists(int slot) const;
     uint16_t readKeys() const;
+    bool padFastForward() const;
+    void openPad(int deviceIndex);
+    void closePad(int32_t instanceId);
+    std::string padName() const;
 
     // ---- interface (ui.cpp)
     void applyTheme();
@@ -65,7 +70,8 @@ private:
     void drawStoppedPopup();
     void drawControlsWindow();
     void drawAboutWindow();
-    void drawHeart(float cx, float cy, float size, uint32_t color) const;
+    void drawBindingRow(int index, bool pad);
+    void drawHeart(ImDrawList* dl, float cx, float cy, float size, uint32_t color) const;
 
     Options options_;
     Config config_;
@@ -94,6 +100,11 @@ private:
     size_t probesPrinted_ = 0;
     uint64_t lastTick_ = 0;
     double timeDebt_ = 0;
+
+    // Controles conectados e o remapeamento em andamento (clique num botão e aperte a tecla).
+    std::vector<SDL_GameController*> pads_;
+    enum class Capture { None, Key, Pad } capture_ = Capture::None;
+    int captureIndex_ = -1;
 
     std::string toast_;
     double toastUntil_ = 0;
