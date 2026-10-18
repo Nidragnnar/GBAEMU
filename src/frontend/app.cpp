@@ -98,6 +98,8 @@ void App::shutdown() {
     ImGui_ImplSDL2_Shutdown();
     ImGui::DestroyContext();
     if (audio_) SDL_CloseAudioDevice(audio_);
+    if (vramTexture_) SDL_DestroyTexture(vramTexture_);
+    if (spriteTexture_) SDL_DestroyTexture(spriteTexture_);
     if (texture_) SDL_DestroyTexture(texture_);
     if (renderer_) SDL_DestroyRenderer(renderer_);
     SDL_DestroyWindow(window_);
@@ -185,6 +187,7 @@ void App::handleEvent(const SDL_Event& ev) {
     else if (key == SDLK_F5) saveStateSlot(config_.stateSlot);
     else if (key == SDLK_F8) loadStateSlot(config_.stateSlot);
     else if (key == SDLK_F11) toggleFullscreen();
+    else if (key == SDLK_F10) stepFrame();
     else if (key == SDLK_F1 && console_) diag::dumpState(*console_, frame_);
     else if (key == SDLK_F2 && console_) diag::dumpTrace(*console_);
 }

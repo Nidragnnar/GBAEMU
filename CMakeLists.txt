@@ -3,6 +3,13 @@ project(NiGBA CXX)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+option(NIGBA_CONSOLE "Mostra o terminal junto com a janela (útil para desenvolver)" ON)
+option(NIGBA_STATIC "Executável único, sem DLLs (para distribuir)" OFF)
+if(NIGBA_STATIC AND MSVC)
+  # Embute as bibliotecas do C++ no executável: quem recebe não precisa instalar nada.
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
@@ -89,7 +96,9 @@ if(SDL2_FOUND)
     ${imgui_SOURCE_DIR}/backends/imgui_impl_sdl2.cpp
     ${imgui_SOURCE_DIR}/backends/imgui_impl_sdlrenderer2.cpp)
   target_include_directories(imgui_sdl PUBLIC ${imgui_SOURCE_DIR} ${imgui_SOURCE_DIR}/backends)
-  target_link_libraries(imgui_sdl PUBLIC SDL2::SDL2)
+  # SDL2::SDL2 na compilação normal (DLL); SDL2::SDL2-static na de distribuição.
+  set(NIGBA_SDL $<IF:$<TARGET_EXISTS:SDL2::SDL2>,SDL2::SDL2,SDL2::SDL2-static>)
+  target_link_libraries(imgui_sdl PUBLIC ${NIGBA_SDL})
 
   add_executable(NiGBA
     src/frontend/main.cpp
@@ -97,8 +106,12 @@ if(SDL2_FOUND)
     src/frontend/ui.cpp
     src/frontend/config.cpp
     src/frontend/diagnostics.cpp
+    src/frontend/debug_ui.cpp
     src/frontend/file_dialog.cpp)
-  target_link_libraries(NiGBA PRIVATE gba_core imgui_sdl SDL2::SDL2 SDL2::SDL2main)
+  target_link_libraries(NiGBA PRIVATE gba_core imgui_sdl ${NIGBA_SDL} $<TARGET_NAME_IF_EXISTS:SDL2::SDL2main>)
+  if(NOT NIGBA_CONSOLE)
+    set_target_properties(NiGBA PROPERTIES WIN32_EXECUTABLE TRUE) # só a janela, sem o terminal
+  endif()
   if(WIN32)
     target_link_libraries(NiGBA PRIVATE comdlg32) # diálogo "Abrir arquivo"
   endif()

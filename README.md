@@ -27,7 +27,8 @@ Emulador de Game Boy Advance em C++20, escrito do zero usando o GBATEK como espe
 - [x] Save states (4 slots), com verificação de jogo e de versão
 - [x] Interface com Dear ImGui: menus, abrir ROM (diálogo, arrastar e soltar, recentes), pausar, reiniciar, escala, tela cheia, volume, tema pastel
 - [x] Configuração de teclas e controle (gamepad): remapeamento na janela Controles, analógico como direcional, gatilho direito acelera
-- [ ] Janelas de depuração (CPU, memória, VRAM, paletas, sprites)
+- [x] Janelas de depuração: CPU (registradores, flags, rastro, avançar quadro), memória (hexadecimal), VRAM (tiles), paletas, sprites (OAM com miniaturas) e registradores de I/O
+- [x] Pacote para distribuir: um único NiGBA.exe, sem DLLs e sem terminal (`empacotar.bat`)
 
 ## Compilar no Windows
 
@@ -55,6 +56,16 @@ Sem `--test-pattern`, a CPU executa a ROM. Se ela encontrar algo ainda não impl
 Controles (todos remapeáveis em Ajuda → Controles; controle/gamepad funciona junto com o teclado): setas = direcional, Z = A, X = B, Enter = START, Backspace = SELECT, A = L, S = R, Tab (segurar) = acelerar, Esc = pausar, F5/F8 = salvar/carregar estado, Ctrl+1..4 = slot, Ctrl+O = abrir ROM, Ctrl+R = reiniciar, F11 = tela cheia, F1 = diagnóstico, F2 = rastro da CPU.
 
 Opções: `--mudo` (sem som), `--desvios-para ENDERECO` (desvios para o endereço e as funções chamadas antes deles), `--chamadas-para ENDERECO` (BLs e ponteiros para o endereço exato), `--quem-chama ENDERECO` (função que contém o endereço e quem a chama), `--rastrear-texto "TEXTO"` (acha um texto do jogo na ROM, os ponteiros para ele, a função que o exibe e quem chama essa função), `--dump ENDERECO:TAMANHO` (mostra a memória em hexadecimal, ex.: `--dump 080C2580:100`), `--sonda` (registra no terminal acessos que costumam revelar imprecisões: leituras da BIOS, open bus, registradores só-escrita, timers e WAITCNT), `--bios gba_bios.bin` (16 KB, extraída do seu próprio console), `--test-pattern` (desenha um degradê na VRAM para validar barramento → PPU → tela), `--scale N` (padrão 3). `Esc` fecha.
+
+## Distribuir para outras pessoas
+
+Quem só vai jogar não precisa de Visual Studio, CMake nem vcpkg. Rode:
+
+```bat
+empacotar.bat
+```
+
+Ele gera `dist\NiGBA-windows.zip` com um `NiGBA.exe` único (o SDL e as bibliotecas do C++ ficam embutidos, então não há DLLs) e um `LEIA-ME.txt` para quem recebe. Essa versão abre sem a janela do terminal. Não inclua ROMs no pacote.
 
 ## Save e save states
 

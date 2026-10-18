@@ -195,6 +195,11 @@ void Bus::probeRead(uint32_t addr, uint8_t value) const {
     if (probes_.size() < 256) probes_.push_back({kind, addr, value});
 }
 
+uint8_t Bus::peek8(uint32_t addr) const {
+    if ((addr >> 24) == 0x00 && addr < bios_.size()) return bios_[addr];
+    return readRaw8(addr);
+}
+
 uint8_t Bus::read8(uint32_t addr) const {
     const uint8_t value = readRaw8(addr);
     if (probing_ && !fetching_) probeRead(addr, value);

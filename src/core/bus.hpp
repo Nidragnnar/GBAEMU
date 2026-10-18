@@ -70,6 +70,10 @@ public:
     bool hasProbes() const { return !probes_.empty(); }
     std::vector<Probe> takeProbes() { return std::exchange(probes_, {}); }
 
+    // Para o depurador: lê sem efeitos colaterais (sem sonda, sem consumir bits do EEPROM) e mostra
+    // a BIOS como ela é, ignorando a proteção.
+    uint8_t peek8(uint32_t addr) const;
+
     uint8_t  read8(uint32_t addr) const;
     uint16_t read16(uint32_t addr) const;
     uint32_t read32(uint32_t addr) const;

@@ -124,6 +124,7 @@ void App::drawUi() {
     drawStoppedPopup();
     if (showControls_) drawControlsWindow();
     if (showAbout_) drawAboutWindow();
+    drawDebugWindows();
 }
 
 void App::drawMenuBar() {
@@ -194,10 +195,17 @@ void App::drawMenuBar() {
     }
 
     if (ImGui::BeginMenu("Depuração", console_ != nullptr)) {
+        ImGui::MenuItem("CPU", nullptr, &showCpu_);
+        ImGui::MenuItem("Memória", nullptr, &showMemory_);
+        ImGui::MenuItem("VRAM (tiles)", nullptr, &showVram_);
+        ImGui::MenuItem("Paletas", nullptr, &showPalette_);
+        ImGui::MenuItem("Sprites", nullptr, &showSprites_);
+        ImGui::MenuItem("Registradores de I/O", nullptr, &showIo_);
+        ImGui::Separator();
+        if (ImGui::MenuItem("Avançar 1 quadro", "F10")) stepFrame();
+        ImGui::Separator();
         if (ImGui::MenuItem("Diagnóstico no terminal", "F1")) diag::dumpState(*console_, frame_);
         if (ImGui::MenuItem("Rastro da CPU no terminal", "F2")) diag::dumpTrace(*console_);
-        ImGui::Separator();
-        ImGui::TextDisabled("Janelas de depuração: em breve");
         ImGui::EndMenu();
     }
 
@@ -370,6 +378,7 @@ void App::drawControlsWindow() {
                 ImGui::BulletText("Ctrl+1..4       escolher o slot");
                 ImGui::BulletText("Ctrl+O / Ctrl+R abrir ROM / reiniciar");
                 ImGui::BulletText("F11             tela cheia");
+                ImGui::BulletText("F10             avançar 1 quadro (pausa)");
                 ImGui::BulletText("F1 / F2         diagnóstico no terminal");
                 ImGui::EndTabItem();
             }

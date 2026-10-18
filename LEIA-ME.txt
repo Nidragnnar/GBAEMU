@@ -1,0 +1,31 @@
+NiGBA - Seu Emulador de Game Boy Advance
+========================================
+
+COMO USAR
+  1. Extraia esta pasta em qualquer lugar (por exemplo, na Área de Trabalho).
+  2. Abra o NiGBA.exe.
+  3. Clique em "Abrir uma ROM..." ou arraste um arquivo .gba para a janela.
+
+  Não precisa instalar nada.
+
+  Na primeira vez, o Windows pode mostrar "O Windows protegeu o computador".
+  Isso acontece com programas novos que ainda não são conhecidos pela Microsoft.
+  Clique em "Mais informações" e depois em "Executar assim mesmo".
+
+CONTROLES (todos podem ser trocados em Ajuda > Controles)
+  Setas ......... direcional         Z ......... A
+  X ............. B                  Enter ..... START
+  Backspace ..... SELECT             A / S ..... L / R
+  Tab (segurar) . acelerar           Esc ....... pausar
+  F5 / F8 ....... salvar / carregar estado
+  F11 ........... tela cheia
+
+  Controles de Xbox, PlayStation e genéricos funcionam: é só conectar.
+  O gatilho direito acelera.
+
+ONDE FICAM OS SAVES
+  O save do jogo (.sav) e os save states (.ss1 a .ss4) ficam na mesma pasta
+  da ROM, com o mesmo nome dela.
+
+SOBRE AS ROMS
+  O NiGBA não vem com jogos. Use apenas cópias dos seus próprios cartuchos.

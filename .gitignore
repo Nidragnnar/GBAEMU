@@ -1,5 +1,7 @@
 # Gerado pelo CMake / Visual Studio
 build/
+build-dist/
+dist/
 out/
 .vs/
 *.user

@@ -71,6 +71,17 @@ private:
     void drawControlsWindow();
     void drawAboutWindow();
     void drawBindingRow(int index, bool pad);
+
+    // ---- janelas de depuração (debug_ui.cpp)
+    void drawDebugWindows();
+    void drawCpuWindow();
+    void drawMemoryWindow();
+    void drawVramWindow();
+    void drawPaletteWindow();
+    void drawSpritesWindow();
+    void drawIoWindow();
+    void stepFrame();
+    SDL_Texture* debugTexture(SDL_Texture*& texture, int w, int h);
     void drawHeart(ImDrawList* dl, float cx, float cy, float size, uint32_t color) const;
 
     Options options_;
@@ -105,6 +116,16 @@ private:
     std::vector<SDL_GameController*> pads_;
     enum class Capture { None, Key, Pad } capture_ = Capture::None;
     int captureIndex_ = -1;
+
+    bool showCpu_ = false, showMemory_ = false, showVram_ = false;
+    bool showPalette_ = false, showSprites_ = false, showIo_ = false;
+    int memRegion_ = 1;                 // EWRAM
+    uint32_t memAddress_ = 0x02000000;
+    bool memJump_ = false;
+    bool vram8bpp_ = false, vramObjPalette_ = false, spritesOnlyVisible_ = true;
+    int vramPaletteBank_ = 0;
+    SDL_Texture* vramTexture_ = nullptr;
+    SDL_Texture* spriteTexture_ = nullptr;
 
     std::string toast_;
     double toastUntil_ = 0;

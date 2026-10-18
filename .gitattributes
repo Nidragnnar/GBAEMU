@@ -1,2 +1,5 @@
 # Normaliza finais de linha (Windows/Linux) para arquivos de texto
 * text=auto
+
+# Scripts do Windows precisam de CRLF (rótulos do cmd falham com LF)
+*.bat text eol=crlf
