@@ -391,6 +391,12 @@ int Cpu::armDataProcessing(uint32_t instr) {
         return cycles + 2;
     }
 
+    if (!writeResult && rd == 15 && setFlags) {
+        // TST/TEQ/CMP/CMN com destino r15 (os antigos "TSTP/TEQP/CMPP/CMNP" do ARM2/ARM3): em vez de
+        // flags, copiam o SPSR para o CPSR, o que pode trocar o modo. Não desviam nem esvaziam o pipeline.
+        setCpsr(spsr());
+        return cycles;
+    }
     if (setFlags) {
         setNZ(result);
         setFlag(flag::C, carry);

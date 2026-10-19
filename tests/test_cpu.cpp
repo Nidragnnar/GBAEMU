@@ -472,9 +472,16 @@ static void testHleMath() {
     callSwi(m, 0x08, 0xFFFFFFFF, 0, 0);
     CHECK(m.cpu.reg(0) == 65535);
 
-    bool threw = false;
-    try { callSwi(m, 0x06, 1, 0, 0); } catch (const std::exception&) { threw = true; }
-    CHECK(threw);
+    callSwi(m, 0x06, 7, 0, 0);                           // divisão por zero: resultado definido (como o mGBA)
+    CHECK(m.cpu.reg(0) == 1 && m.cpu.reg(1) == 7 && m.cpu.reg(3) == 1);
+    callSwi(m, 0x06, static_cast<uint32_t>(-7), 0, 0);
+    CHECK(m.cpu.reg(0) == 0xFFFFFFFFu && m.cpu.reg(1) == static_cast<uint32_t>(-7));
+
+    // ArcTan: o polinômio da BIOS. tan(45°) = 1.0 (0x4000) dá 0x2000 (45° = 1/8 de volta = 0x2000 em 0x10000/volta... em 1/4 de volta = 0x4000)
+    callSwi(m, 0x09, 0x4000, 0, 0);
+    CHECK(m.cpu.reg(0) == 0x2000 || m.cpu.reg(0) == 0x1FFF || m.cpu.reg(0) == 0x2001);
+    callSwi(m, 0x09, 0, 0, 0);
+    CHECK(m.cpu.reg(0) == 0 && m.cpu.reg(3) == 0xA2F9);  // ângulo 0 e o último coeficiente do polinômio em r3
 }
 
 static void testHleDecompress() {
@@ -624,6 +631,23 @@ static void testHleMoreBiosFunctions() {
     CHECK(!threw);
 }
 
+// Regressão (arm.gba do jsmolka, testes 234 e 235): TST/TEQ/CMP/CMN com destino r15 copiam o SPSR para o
+// CPSR, trocando o modo, sem desviar nem esvaziar o pipeline.
+static void testTestInstructionWithPcDestination() {
+    Machine m;
+    m.load({0xE3A08020,   // mov  r8, #32            (r8 do modo System)
+            0xE321F011,   // msr  cpsr_c, #0x11      (modo FIQ)
+            0xE3A08040,   // mov  r8, #64            (r8 do FIQ)
+            0xE369F01F,   // msr  spsr_fc, #0x1F     (SPSR = modo System)
+            0xE15FF000,   // cmp  pc, pc, r0         (destino r15: CPSR = SPSR)
+            0xE3A09001}); // mov  r9, #1             (o pipeline não foi esvaziado: executa)
+    m.run(6);
+    CHECK(m.cpu.mode() == gba::CpuMode::System);
+    CHECK(m.cpu.reg(8) == 32);                           // voltou a ver o r8 do System
+    CHECK(m.cpu.reg(9) == 1);
+    CHECK(m.cpu.pc() == kBase + 24);                     // não houve desvio
+}
+
 int main() {
     testArithmetic();
     testConditions();
@@ -647,6 +671,7 @@ int main() {
     testHleDecompress();
     testHleAffineAndAngles();
     testHleMoreBiosFunctions();
+    testTestInstructionWithPcDestination();
     if (failures == 0) std::printf("CPU: todos os testes passaram.\n");
     return failures == 0 ? 0 : 1;
 }

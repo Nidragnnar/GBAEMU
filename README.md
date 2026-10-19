@@ -31,6 +31,7 @@ Emulador de Game Boy Advance em C++20, escrito do zero usando o GBATEK como espe
 - [x] Interface com Dear ImGui: menus, abrir ROM (diálogo, arrastar e soltar, recentes), pausar, reiniciar, escala, tela cheia, volume, tema pastel
 - [x] Configuração de teclas e controle (gamepad): remapeamento na janela Controles, analógico como direcional, gatilho direito acelera
 - [x] Janelas de depuração: CPU (registradores, flags, rastro, avançar quadro), memória (hexadecimal), VRAM (tiles), paletas, sprites (OAM com miniaturas) e registradores de I/O
+- [x] Passa nas ROMs de teste do jsmolka (arm, thumb, memory, nes, unsafe, saves, ppu) e, na suíte do mGBA, 100% em Memory, I/O read, DMA, BIOS math, Shifter e Carry; o CI baixa e roda tudo isso a cada push
 - [x] GitHub Actions: compila e testa no Windows, Linux e macOS a cada push; publica a Release ao enviar uma tag de versão
 - [x] Pacote para distribuir: um único NiGBA.exe, sem DLLs e sem terminal (`empacotar.bat`)
 
@@ -95,5 +96,6 @@ O save fica ao lado da ROM, com o mesmo nome e extensão `.sav` (por exemplo `RO
 src/core/      núcleo sem dependências (gba = console completo; bus, cartucho, save, cpu ARM/Thumb, BIOS HLE, dma, timers, ppu, apu (áudio), analysis = ferramentas de engenharia reversa)
 src/frontend/assets/  ícone do programa (nigba.ico; nigba.png em 512 px para outros usos)
 src/frontend/  aplicação (SDL2 + Dear ImGui): app, ui, config, diagnóstico, diálogo de arquivos
-tests/         testes do núcleo, da CPU, do sistema, do vídeo e do áudio
+tests/         testes do núcleo, da CPU, do sistema, do vídeo, do áudio, dos save states e das ROMs de teste
+               (coloque arm.gba, thumb.gba, suite.gba etc. em tests/roms/ para rodá-las localmente)
 ```

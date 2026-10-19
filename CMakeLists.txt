@@ -79,6 +79,14 @@ if(MSVC)
 endif()
 add_test(NAME state COMMAND gba_state_tests)
 
+# ROMs de teste do jsmolka (opcionais: baixadas pelo GitHub Actions; puladas se ausentes)
+add_executable(gba_rom_tests tests/test_roms.cpp)
+target_link_libraries(gba_rom_tests PRIVATE gba_core)
+if(MSVC)
+  target_compile_options(gba_rom_tests PRIVATE /utf-8)
+endif()
+add_test(NAME roms COMMAND gba_rom_tests ${CMAKE_SOURCE_DIR}/tests/roms)
+
 find_package(SDL2 CONFIG)
 if(SDL2_FOUND)
   # Dear ImGui: baixado do repositório oficial numa versão fixa e compilado junto

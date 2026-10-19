@@ -22,6 +22,47 @@ const std::array<int32_t, 256>& sineTable() {
     return table;
 }
 
+// Multiplicação de 32 bits com estouro "dando a volta", como no ARM (em C++, estouro com sinal é indefinido).
+int32_t mul32(int32_t a, int32_t b) { return static_cast<int32_t>(static_cast<uint32_t>(a) * static_cast<uint32_t>(b)); }
+int32_t shl32(int32_t a, int n) { return static_cast<int32_t>(static_cast<uint32_t>(a) << n); }
+
+// ArcTan da BIOS: uma aproximação por polinômio em ponto fixo (1.14), com as constantes da própria BIOS.
+// Os jogos (e as ROMs de teste) dependem dos valores exatos dela, inclusive dos que ficam em r1 e r3.
+int16_t biosArcTan(int32_t i, int32_t& r1, int32_t& r3) {
+    const int32_t a = -(mul32(i, i) >> 14);
+    int32_t b = (mul32(0xA9, a) >> 14) + 0x390;
+    for (const int32_t c : {0x91C, 0xFB6, 0x16AA, 0x2081, 0x3651, 0xA2F9}) b = (mul32(b, a) >> 14) + c;
+    r1 = a;
+    r3 = b;
+    return static_cast<int16_t>(mul32(i, b) >> 16);
+}
+
+// ArcTan2 da BIOS: escolhe o octante e usa a ArcTan acima. 0x10000 = uma volta.
+int32_t biosArcTan2(int32_t x, int32_t y, int32_t& r1) {
+    int32_t r3 = 0;
+    const auto atanOf = [&](int32_t num, int32_t den) {
+        const int32_t n = shl32(num, 14);
+        const int32_t q = den == -1 ? static_cast<int32_t>(0u - static_cast<uint32_t>(n)) : n / den; // sem estouro em C++
+        return static_cast<int32_t>(biosArcTan(q, r1, r3));
+    };
+    if (y == 0) return x >= 0 ? 0 : 0x8000;
+    if (x == 0) return y >= 0 ? 0x4000 : 0xC000;
+    if (y >= 0) {
+        if (x >= 0) {
+            if (x >= y) return atanOf(y, x);
+        } else if (-x >= y) {
+            return atanOf(y, x) + 0x8000;
+        }
+        return 0x4000 - atanOf(x, y);
+    }
+    if (x <= 0) {
+        if (-x > -y) return atanOf(y, x) + 0x8000;
+    } else if (x >= -y) {
+        return atanOf(y, x) + 0x10000;
+    }
+    return 0xC000 - atanOf(x, y);
+}
+
 [[noreturn]] void fail(const char* what, uint32_t number, uint32_t pc) {
     char msg[128];
     std::snprintf(msg, sizeof msg, "SWI 0x%02X %s (em %08X)", static_cast<unsigned>(number), what, pc);
@@ -39,13 +80,17 @@ int Cpu::hleSwi(uint32_t number) {
     case 0x04: hleIntrWait(r_[0] != 0, static_cast<uint16_t>(r_[1])); return 3;
     case 0x05: hleIntrWait(true, irq::VBlank); return 3;               // VBlankIntrWait
     case 0x09: {                                                        // ArcTan: tan em 1.14 -> ângulo
-        const double angle = std::atan(static_cast<int16_t>(r_[0]) / 16384.0);
-        r_[0] = static_cast<uint32_t>(static_cast<int32_t>(std::lround(angle / (3.14159265358979323846 / 2) * 0x4000)));
+        int32_t a = 0, b = 0;
+        r_[0] = static_cast<uint32_t>(static_cast<int32_t>(biosArcTan(static_cast<int32_t>(r_[0]), a, b)));
+        r_[1] = static_cast<uint32_t>(a);
+        r_[3] = static_cast<uint32_t>(b);
         return 3;
     }
     case 0x0A: {                                                        // ArcTan2(x, y): 0..0xFFFF = uma volta
-        const double angle = std::atan2(static_cast<int16_t>(r_[1]), static_cast<int16_t>(r_[0]));
-        r_[0] = static_cast<uint16_t>(std::lround(angle / (2 * 3.14159265358979323846) * 0x10000) & 0xFFFF);
+        int32_t a = static_cast<int32_t>(r_[1]);
+        r_[0] = static_cast<uint16_t>(biosArcTan2(static_cast<int32_t>(r_[0]), static_cast<int32_t>(r_[1]), a));
+        r_[1] = static_cast<uint32_t>(a);
+        r_[3] = 0x170;
         return 3;
     }
     case 0x0E: hleBgAffineSet(); return 3;
@@ -75,7 +120,7 @@ int Cpu::hleSwi(uint32_t number) {
     case 0x14: hleDecompress(true, false); return 3;  // RLUnCompWram
     case 0x15: hleDecompress(true, true); return 3;   // RLUnCompVram
     case 0x03: halt(); return 3;                      // Stop: tratado como Halt (acorda com uma IRQ)
-    case 0x0D: r_[0] = 0xBAAE187F; return 3;          // GetBiosChecksum: valor da BIOS do GBA
+    case 0x0D: r_[0] = 0xBAAE187F; r_[1] = 1; r_[3] = 0x4000; return 3; // GetBiosChecksum (valores da BIOS do GBA)
     case 0x10: hleBitUnPack(); return 3;
     case 0x13: hleHuffman(); return 3;                // HuffUnComp
     case 0x16: hleDiffUnFilter(false, false); return 3; // Diff8bitUnFilterWram
@@ -190,7 +235,14 @@ void Cpu::hleRegisterRamReset(uint32_t flags) {
 
 // SWI 06h: r0 / r1 com sinal. Devolve r0 = quociente, r1 = resto, r3 = |quociente|.
 void Cpu::hleDiv(int32_t numerator, int32_t denominator) {
-    if (denominator == 0) fail("Div: divisão por zero (a BIOS real trava aqui)", 0x06, pc());
+    if (denominator == 0) {
+        // Divisão por zero: a BIOS real só termina para alguns numeradores; para os outros, trava. Aqui
+        // sempre devolvemos o mesmo resultado definido que o mGBA usa (sinal do numerador, resto = numerador).
+        r_[0] = numerator < 0 ? 0xFFFFFFFFu : 1u;
+        r_[1] = static_cast<uint32_t>(numerator);
+        r_[3] = 1;
+        return;
+    }
     // INT32_MIN / -1 estoura em C++; no hardware o resultado é o próprio INT32_MIN.
     const bool overflow = numerator == INT32_MIN && denominator == -1;
     const int32_t quotient = overflow ? INT32_MIN : numerator / denominator;
@@ -211,17 +263,20 @@ void Cpu::hleCpuSet() {
     uint32_t src = r_[0], dst = r_[1];
 
     if (word) {
-        src &= ~3u; dst &= ~3u;
+        // Origem e destino vão sem alinhar: o barramento alinha nas regiões normais, mas a SRAM (8 bits)
+        // usa o endereço exato (lê o byte dele repetido; grava o byte "girado" para aquela posição).
         const uint32_t fillValue = bus_.read32(src);
         for (uint32_t i = 0; i < count; ++i, dst += 4) {
             bus_.write32(dst, fill ? fillValue : bus_.read32(src));
             if (!fill) src += 4;
         }
     } else {
-        src &= ~1u; dst &= ~1u;
-        const uint16_t fillValue = bus_.read16(src);
+        // A BIOS lê com LDRH sem alinhar a origem: num endereço ímpar, o ARM7 gira a halfword em 8 bits e
+        // a STRH grava só os 16 bits de baixo, ou seja, sobra um byte (o teste da suíte do mGBA confere).
+        const auto readHalf = [this](uint32_t a) { return static_cast<uint16_t>(bus_.read16(a) >> ((a & 1) * 8)); };
+        const uint16_t fillValue = readHalf(src);
         for (uint32_t i = 0; i < count; ++i, dst += 2) {
-            bus_.write16(dst, fill ? fillValue : bus_.read16(src));
+            bus_.write16(dst, fill ? fillValue : readHalf(src));
             if (!fill) src += 2;
         }
     }
@@ -233,7 +288,7 @@ void Cpu::hleCpuFastSet() {
     const uint32_t control = r_[2];
     const uint32_t count = ((control & 0x1FFFFF) + 7) & ~7u;
     const bool fill = control & (1u << 24);
-    uint32_t src = r_[0] & ~3u, dst = r_[1] & ~3u;
+    uint32_t src = r_[0], dst = r_[1]; // sem alinhar, pelo mesmo motivo da CpuSet
 
     const uint32_t fillValue = bus_.read32(src);
     for (uint32_t i = 0; i < count; ++i, dst += 4) {

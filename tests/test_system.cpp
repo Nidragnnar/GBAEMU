@@ -679,7 +679,8 @@ static void testStateVersion1StillLoads() {
     auto state = g.saveState();
     auto rtcOnly = gba::StateArchive::writer();
     g.bus().rtc().serialize(rtcOnly);
-    state.resize(state.size() - rtcOnly.data().size());    // tira o relógio do fim...
+    // Campos das versões 2 (relógio) e 3 (registrador do DMA, 4 bytes) ficam no fim: tirá-los dá a versão 1.
+    state.resize(state.size() - rtcOnly.data().size() - 4);
     state[8] = 1; state[9] = state[10] = state[11] = 0;    // ...e marca como versão 1
     bool ok = true;
     try { g.loadState(state); } catch (const std::exception&) { ok = false; }

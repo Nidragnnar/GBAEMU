@@ -77,7 +77,7 @@ namespace gba {
 
 namespace {
 constexpr char kStateMagic[8] = {'G', 'B', 'A', 'E', 'M', 'U', 'S', 'T'};
-constexpr uint32_t kStateVersion = 2; // 2: inclui o relógio do cartucho (a versão 1 continua aceita)
+constexpr uint32_t kStateVersion = 3; // 2: relógio do cartucho; 3: registrador de passagem do DMA (anteriores aceitas)
 } // namespace
 
 void Gba::serialize(StateArchive& ar) {
@@ -105,7 +105,9 @@ void Gba::serialize(StateArchive& ar) {
     ar.value(cycleBalance_);
     ar.value(instructions_);
     ar.value(frames_);
+    // Campos novos sempre no final: assim, cada versão antiga é o começo exato da nova.
     if (version >= 2) bus_.rtc().serialize(ar);
+    if (version >= 3) dma_.serializeLatch(ar);
     if (ar.loading() && !ar.atEnd()) throw std::runtime_error("save state com dados sobrando (corrompido?)");
 }
 

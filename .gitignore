@@ -19,3 +19,6 @@ CMakeSettings.json
 
 # Saídas de diagnóstico
 rastreio*.txt
+
+# ROMs de teste baixadas pelo GitHub Actions
+tests/roms/

@@ -21,6 +21,7 @@ public:
     void trigger(Timing timing);     // chamado pelo agendador no VBlank e no HBlank
     void soundRequest(int fifo);     // fila de som A (0) ou B (1) pedindo dados: DMA 1/2 no modo especial
     void serialize(StateArchive& ar) { for (auto& ch : channels_) ar.value(ch); }
+    void serializeLatch(StateArchive& ar) { ar.value(latch_); } // versão 3 do formato (fica no final)
 
 private:
     struct Channel {
@@ -32,9 +33,11 @@ private:
     uint16_t control(int n) const { return bus_.ioRead16(base(n) + 10); }
     void latch(int n, bool reloadAll);
     void transfer(int n);
+    void transferUnit(uint32_t src, uint32_t dst, bool word);
 
     Bus& bus_;
     std::array<Channel, 4> channels_{};
+    uint32_t latch_ = 0; // último valor que passou pelo DMA
 };
 
 } // namespace gba

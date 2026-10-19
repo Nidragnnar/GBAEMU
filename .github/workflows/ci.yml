@@ -29,6 +29,18 @@ jobs:
       - uses: actions/checkout@v4
       - name: SDL2
         run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+      - name: ROMs de teste (jsmolka/gba-tests e suíte do mGBA)
+        run: |
+          mkdir -p tests/roms
+          base=https://raw.githubusercontent.com/jsmolka/gba-tests/master
+          for f in arm/arm thumb/thumb memory/memory nes/nes unsafe/unsafe bios/bios \
+                   save/flash64 save/flash128 save/sram save/none; do
+            curl -sSfL "$base/$f.gba" -o "tests/roms/$(basename $f).gba"
+          done
+          # Suíte de testes do mGBA
+          curl -sSfL https://s3.amazonaws.com/mgba/suite-latest.zip -o suite.zip
+          unzip -o -j suite.zip '*.gba' -d tests/roms
+          mv tests/roms/suite*.gba tests/roms/suite.gba 2>/dev/null || true
       - name: Configurar
         run: cmake -B build -DCMAKE_BUILD_TYPE=Release
       - name: Compilar

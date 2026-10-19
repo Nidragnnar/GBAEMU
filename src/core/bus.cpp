@@ -15,8 +15,10 @@ bool isWriteOnlyIo(uint32_t off) {
 }
 // Registradores que existem e podem ser lidos.
 bool isReadableIo(uint32_t off) {
+    // 08C-08F (entre o SOUNDBIAS e a memória de onda) é uma palavra inteira sem registrador: open bus.
     return off <= 0x00F || (off >= 0x048 && off <= 0x04B) || (off >= 0x050 && off <= 0x053) ||
-           (off >= 0x060 && off <= 0x09F) || (off >= 0x0BA && off <= 0x0BB) || (off >= 0x0C6 && off <= 0x0C7) ||
+           (off >= 0x060 && off <= 0x08B) || (off >= 0x090 && off <= 0x09F) ||
+           (off >= 0x0BA && off <= 0x0BB) || (off >= 0x0C6 && off <= 0x0C7) ||
            (off >= 0x0D2 && off <= 0x0D3) || (off >= 0x0DE && off <= 0x0DF) || (off >= 0x100 && off <= 0x10F) ||
            (off >= 0x120 && off <= 0x12F) || (off >= 0x130 && off <= 0x135) || (off >= 0x140 && off <= 0x141) ||
            (off >= 0x150 && off <= 0x159) || (off >= 0x200 && off <= 0x20B) || (off >= 0x300 && off <= 0x301);
@@ -26,6 +28,7 @@ bool isReadableIo(uint32_t off) {
 uint16_t ioReadMask(uint32_t halfOffset) {
     switch (halfOffset) {
     case 0x004: return 0xFF3F; // DISPSTAT: bits 6-7 não existem
+    case 0x008: case 0x00A: return 0xDFFF; // BG0CNT/BG1CNT: o bit 13 só existe nos BGs afins (2 e 3)
     case 0x048: case 0x04A: return 0x3F3F; // WININ, WINOUT
     case 0x050: return 0x3FFF; // BLDCNT
     case 0x052: return 0x1F1F; // BLDALPHA
