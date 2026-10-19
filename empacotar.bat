@@ -61,6 +61,8 @@ where cmake >nul 2>nul || (
 exit /b 0
 
 rem Aberto com dois cliques, a janela fecharia na hora: espera uma tecla para dar tempo de ler.
+rem No GitHub Actions (variável CI definida) não há ninguém para apertar a tecla: não espera.
 :esperar
+if defined CI exit /b 0
 echo %cmdcmdline% | find /i "/c" >nul && pause
 exit /b 0

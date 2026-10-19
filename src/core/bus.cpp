@@ -1,5 +1,6 @@
 #include "bus.hpp"
 
+#include <algorithm>
 #include <iterator>
 #include <stdexcept>
 

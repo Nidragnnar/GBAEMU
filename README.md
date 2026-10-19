@@ -1,5 +1,7 @@
 # NiGBA
 
+[![CI](https://github.com/Nidragnnar/NiGBA/actions/workflows/ci.yml/badge.svg)](https://github.com/Nidragnnar/NiGBA/actions/workflows/ci.yml)
+
 Emulador de Game Boy Advance em C++20, escrito do zero usando o GBATEK como especificação.
 
 ## Estado atual (etapa 1)
@@ -29,6 +31,7 @@ Emulador de Game Boy Advance em C++20, escrito do zero usando o GBATEK como espe
 - [x] Interface com Dear ImGui: menus, abrir ROM (diálogo, arrastar e soltar, recentes), pausar, reiniciar, escala, tela cheia, volume, tema pastel
 - [x] Configuração de teclas e controle (gamepad): remapeamento na janela Controles, analógico como direcional, gatilho direito acelera
 - [x] Janelas de depuração: CPU (registradores, flags, rastro, avançar quadro), memória (hexadecimal), VRAM (tiles), paletas, sprites (OAM com miniaturas) e registradores de I/O
+- [x] GitHub Actions: compila e testa no Windows, Linux e macOS a cada push; publica a Release ao enviar uma tag de versão
 - [x] Pacote para distribuir: um único NiGBA.exe, sem DLLs e sem terminal (`empacotar.bat`)
 
 ## Compilar no Windows
@@ -67,6 +70,15 @@ empacotar.bat
 ```
 
 Ele gera `dist\NiGBA-windows.zip` com um `NiGBA.exe` único (o SDL e as bibliotecas do C++ ficam embutidos, então não há DLLs) e um `LEIA-ME.txt` para quem recebe. Essa versão abre sem a janela do terminal. Não inclua ROMs no pacote.
+
+## Publicar uma versão nova
+
+```bat
+git tag v1.2
+git push origin v1.2
+```
+
+O GitHub Actions roda os testes, gera o pacote do Windows e cria a Release com o `NiGBA-windows.zip` anexado. Depois, é só editar o texto da Release no site, se quiser.
 
 ## Save e save states
 

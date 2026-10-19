@@ -1,0 +1,51 @@
+# Compila o NiGBA e roda todos os testes no Windows, no Linux e no macOS a cada push.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: SDL2 (vcpkg)
+        run: '& "$env:VCPKG_INSTALLATION_ROOT\vcpkg.exe" install sdl2:x64-windows'
+      - name: Configurar
+        run: cmake -B build -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+      - name: Compilar
+        run: cmake --build build --config Release --parallel
+      - name: Testes
+        run: ctest --test-dir build -C Release --output-on-failure
+
+  linux:
+    name: Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: SDL2
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+      - name: Configurar
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Compilar
+        run: cmake --build build --parallel
+      - name: Testes
+        run: ctest --test-dir build --output-on-failure
+
+  macos:
+    name: macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: SDL2
+        run: brew install sdl2
+      - name: Configurar
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release
+      - name: Compilar
+        run: cmake --build build --parallel
+      - name: Testes
+        run: ctest --test-dir build --output-on-failure
