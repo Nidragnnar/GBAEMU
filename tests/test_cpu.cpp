@@ -567,6 +567,63 @@ static void testHleAffineAndAngles() {
     CHECK(m.cpu.reg(0) == 0x4000);
 }
 
+static void testHleMoreBiosFunctions() {
+    Machine m;
+    callSwi(m, 0x0D, 0, 0, 0);                            // GetBiosChecksum
+    CHECK(m.cpu.reg(0) == 0xBAAE187Fu);
+
+    // BitUnPack: 1 byte de unidades de 2 bits -> unidades de 8 bits, somando 0x10.
+    m.bus.write8(0x03000000, 0x1B);                       // unidades (do bit baixo): 3, 2, 1, 0
+    m.bus.write16(0x03000010, 1);                         // tamanho da origem: 1 byte
+    m.bus.write8(0x03000012, 2);                          // 2 bits por unidade na origem
+    m.bus.write8(0x03000013, 8);                          // 8 bits por unidade no destino
+    m.bus.write32(0x03000014, 0x10);                      // soma 0x10 (mas não aos zeros)
+    callSwi(m, 0x10, 0x03000000, 0x03000100, 0x03000010);
+    CHECK(m.bus.read32(0x03000100) == 0x00111213u);
+    m.bus.write32(0x03000014, 0x80000010);                // agora soma também aos zeros
+    callSwi(m, 0x10, 0x03000000, 0x03000100, 0x03000010);
+    CHECK(m.bus.read32(0x03000100) == 0x10111213u);
+
+    // Huffman: árvore com A = 0, B = 10, C = 11; texto "ABCA" -> bits 0 10 11 0.
+    writeBytes(m.bus, 0x03000200, {
+        0x28, 0x04, 0x00, 0x00,   // cabeçalho: 8 bits por valor, tipo 2, tamanho 4
+        0x03,                     // tamanho da árvore: (3 + 1) * 2 = 8 bytes
+        0x80,                     // raiz: filho 0 é valor; filhos logo adiante
+        'A',                      // filho 0 da raiz
+        0xC0,                     // filho 1 da raiz: nó cujos dois filhos são valores
+        'B', 'C',                 // filhos desse nó
+        0x00, 0x00});             // preenchimento até alinhar a sequência de bits
+    m.bus.write32(0x0300020C, 0x58000000);                // bits 31..26: 0 1 0 1 1 0
+    callSwi(m, 0x13, 0x03000200, 0x03000300, 0);
+    CHECK(m.bus.read32(0x03000300) == 0x41434241u);       // "ABCA"
+
+    // Filtros de diferença: cada valor é a diferença para o anterior.
+    writeBytes(m.bus, 0x03000400, {0x81, 0x04, 0x00, 0x00, 10, 1, 2, 3});
+    callSwi(m, 0x16, 0x03000400, 0x03000500, 0);
+    CHECK(m.bus.read32(0x03000500) == (10u | (11u << 8) | (13u << 16) | (16u << 24)));
+    callSwi(m, 0x17, 0x03000400, 0x06000000, 0);          // versão VRAM: grava em halfwords
+    CHECK(m.bus.read16(0x06000000) == (10u | (11u << 8)) && m.bus.read16(0x06000002) == (13u | (16u << 8)));
+    m.bus.write32(0x03000600, (6u << 8) | 0x82);
+    m.bus.write16(0x03000604, 100);
+    m.bus.write16(0x03000606, 5);
+    m.bus.write16(0x03000608, static_cast<uint16_t>(-10));
+    callSwi(m, 0x18, 0x03000600, 0x03000700, 0);
+    CHECK(m.bus.read16(0x03000700) == 100 && m.bus.read16(0x03000702) == 105 && m.bus.read16(0x03000704) == 95);
+
+    // MidiKey2Freq: nota 168 está uma oitava abaixo da 180, então divide a frequência por 2.
+    m.bus.write32(0x03000804, 0x02000000);
+    callSwi(m, 0x1F, 0x03000800, 168, 0);
+    CHECK(m.cpu.reg(0) == 0x01000000u);
+    callSwi(m, 0x1F, 0x03000800, 180, 0);
+    CHECK(m.cpu.reg(0) == 0x02000000u);
+
+    callSwi(m, 0x25, 0, 0, 0);                            // MultiBoot: falha (sem cabo de link)
+    CHECK(m.cpu.reg(0) == 1);
+    bool threw = false;                                   // driver de som da BIOS: segue sem erro
+    try { callSwi(m, 0x1A, 0, 0, 0); callSwi(m, 0x28, 0, 0, 0); } catch (const std::exception&) { threw = true; }
+    CHECK(!threw);
+}
+
 int main() {
     testArithmetic();
     testConditions();
@@ -589,6 +646,7 @@ int main() {
     testHleMath();
     testHleDecompress();
     testHleAffineAndAngles();
+    testHleMoreBiosFunctions();
     if (failures == 0) std::printf("CPU: todos os testes passaram.\n");
     return failures == 0 ? 0 : 1;
 }

@@ -74,6 +74,23 @@ int Cpu::hleSwi(uint32_t number) {
     case 0x12: hleDecompress(false, true); return 3;  // LZ77UnCompVram
     case 0x14: hleDecompress(true, false); return 3;  // RLUnCompWram
     case 0x15: hleDecompress(true, true); return 3;   // RLUnCompVram
+    case 0x03: halt(); return 3;                      // Stop: tratado como Halt (acorda com uma IRQ)
+    case 0x0D: r_[0] = 0xBAAE187F; return 3;          // GetBiosChecksum: valor da BIOS do GBA
+    case 0x10: hleBitUnPack(); return 3;
+    case 0x13: hleHuffman(); return 3;                // HuffUnComp
+    case 0x16: hleDiffUnFilter(false, false); return 3; // Diff8bitUnFilterWram
+    case 0x17: hleDiffUnFilter(false, true); return 3;  // Diff8bitUnFilterVram
+    case 0x18: hleDiffUnFilter(true, false); return 3;  // Diff16bitUnFilter
+    case 0x1F: hleMidiKey2Freq(); return 3;
+    case 0x25: r_[0] = 1; return 3;                   // MultiBoot: não há cabo de link; devolve "falhou"
+    case 0x26: hleSoftReset(); return 3;              // HardReset: recomeça o jogo (sem a animação da BIOS)
+    case 0x27: halt(); return 3;                      // CustomHalt
+    // Driver de som da própria BIOS (raro: a maioria dos jogos traz o seu). Sem ele o jogo segue, só
+    // sem esse som. 0x2A devolve uma lista de endereços: aqui, nenhum.
+    case 0x1A: case 0x1B: case 0x1C: case 0x1D: case 0x1E:
+    case 0x20: case 0x21: case 0x22: case 0x23: case 0x24:
+    case 0x28: case 0x29: case 0x2A:
+        return 3;
     default:
         fail("ainda não implementada sem BIOS", number, pc());
     }
@@ -279,6 +296,126 @@ void Cpu::hleDecompress(bool rle, bool vram) {
     } else {
         for (uint32_t i = 0; i < out.size(); ++i) bus_.write8(dst + i, out[i]);
     }
+}
+
+// SWI 10h: expande dados de 1/2/4/8 bits por unidade para 1/2/4/8/16/32 bits, somando um deslocamento.
+// r0 = origem, r1 = destino (gravado em palavras de 32 bits), r2 = informações:
+//   u16 tamanho da origem em bytes, u8 bits por unidade na origem, u8 bits por unidade no destino,
+//   u32 deslocamento (bit 31 = somar também às unidades zero).
+void Cpu::hleBitUnPack() {
+    uint32_t src = r_[0], dst = r_[1];
+    const uint32_t info = r_[2];
+    const uint32_t length = bus_.read16(info);
+    const uint32_t srcWidth = bus_.read8(info + 2), dstWidth = bus_.read8(info + 3);
+    const uint32_t offsetWord = bus_.read32(info + 4);
+    const uint32_t offset = offsetWord & 0x7FFFFFFF;
+    const bool offsetZeros = offsetWord & 0x80000000;
+    if (srcWidth == 0 || dstWidth == 0 || srcWidth > 8 || dstWidth > 32 || 8 % srcWidth || 32 % dstWidth) return;
+
+    uint32_t out = 0, outBits = 0;
+    const uint32_t srcMask = (1u << srcWidth) - 1;
+    const uint32_t dstMask = dstWidth == 32 ? 0xFFFFFFFFu : (1u << dstWidth) - 1;
+    for (uint32_t i = 0; i < length; ++i) {
+        const uint8_t byte = bus_.read8(src++);
+        for (uint32_t bit = 0; bit < 8; bit += srcWidth) {
+            uint32_t unit = (byte >> bit) & srcMask;
+            if (unit || offsetZeros) unit += offset;
+            out |= (unit & dstMask) << outBits;
+            outBits += dstWidth;
+            if (outBits == 32) {
+                bus_.write32(dst, out);
+                dst += 4;
+                out = 0;
+                outBits = 0;
+            }
+        }
+    }
+}
+
+// SWI 13h: descompressão Huffman. r0 = origem, r1 = destino (palavras de 32 bits).
+// Cabeçalho: bits 0-3 = bits por valor (4 ou 8), bits 4-7 = 2, bits 8-31 = tamanho descomprimido.
+// Depois: tamanho da árvore (byte; a tabela ocupa (n+1)*2 bytes contando esse byte), os nós, e a
+// sequência de bits em palavras de 32 bits, do bit 31 para o 0 (0 = filho 0, 1 = filho 1).
+// Nó: bits 0-5 = deslocamento até os filhos, bit 6 = filho 1 é valor, bit 7 = filho 0 é valor.
+void Cpu::hleHuffman() {
+    uint32_t src = r_[0];
+    if (!(src & 0x0E000000)) return; // origem dentro da BIOS: ignorado, como na BIOS real
+    const uint32_t header = bus_.read32(src);
+    const uint32_t size = header >> 8;
+    const uint32_t valueBits = header & 0xF;
+    if (size == 0 || (valueBits != 4 && valueBits != 8)) return;
+    const uint32_t treeStart = src + 4;
+    const uint32_t root = treeStart + 1;
+    uint32_t stream = treeStart + (bus_.read8(treeStart) + 1u) * 2;
+
+    uint32_t dst = r_[1], out = 0, outBits = 0, written = 0;
+    uint32_t node = root;
+    uint8_t nodeValue = bus_.read8(node);
+    while (written < size) {
+        const uint32_t word = bus_.read32(stream);
+        stream += 4;
+        for (int bit = 31; bit >= 0 && written < size; --bit) {
+            const uint32_t direction = (word >> bit) & 1;
+            const uint32_t child = (node & ~1u) + (nodeValue & 0x3Fu) * 2 + 2 + direction;
+            const bool isValue = nodeValue & (direction ? 0x40 : 0x80);
+            if (!isValue) {
+                node = child;
+                nodeValue = bus_.read8(node);
+                continue;
+            }
+            out |= (bus_.read8(child) & ((1u << valueBits) - 1)) << outBits;
+            outBits += valueBits;
+            if (outBits == 32) {
+                bus_.write32(dst, out);
+                dst += 4;
+                written += 4;
+                out = 0;
+                outBits = 0;
+            }
+            node = root;
+            nodeValue = bus_.read8(node);
+        }
+    }
+}
+
+// SWI 16h/17h/18h: desfaz o "filtro de diferença" (cada valor guardado como a diferença para o anterior).
+// Cabeçalho: bits 0-3 = 1 (8 bits) ou 2 (16 bits), bits 4-7 = 8, bits 8-31 = tamanho em bytes.
+// A versão "Vram" de 8 bits grava em halfwords, porque escrita de 8 bits na VRAM é duplicada.
+void Cpu::hleDiffUnFilter(bool sixteenBit, bool vram) {
+    uint32_t src = r_[0], dst = r_[1];
+    if (!(src & 0x0E000000)) return;
+    const uint32_t size = bus_.read32(src) >> 8;
+    src += 4;
+    if (sixteenBit) {
+        uint16_t value = 0;
+        for (uint32_t i = 0; i < size; i += 2) {
+            value = static_cast<uint16_t>(value + bus_.read16(src + i));
+            bus_.write16(dst + i, value);
+        }
+        return;
+    }
+    uint8_t value = 0;
+    uint16_t pending = 0;
+    for (uint32_t i = 0; i < size; ++i) {
+        value = static_cast<uint8_t>(value + bus_.read8(src + i));
+        if (!vram) {
+            bus_.write8(dst + i, value);
+        } else if (i & 1) {
+            bus_.write16(dst + i - 1, static_cast<uint16_t>(pending | (value << 8)));
+        } else {
+            pending = value;
+            if (i + 1 == size) bus_.write16(dst + i, pending);
+        }
+    }
+}
+
+// SWI 1Fh: frequência de uma nota MIDI para o driver de som.
+// r0 = endereço de uma "WaveData" (frequência de base em +4), r1 = nota, r2 = ajuste fino (1/256 de nota).
+// r0 = frequência / 2^((180 - nota - ajuste/256) / 12)
+void Cpu::hleMidiKey2Freq() {
+    const double base = static_cast<double>(bus_.read32(r_[0] + 4));
+    const double exponent = (180.0 - static_cast<double>(r_[1]) - static_cast<double>(r_[2]) / 256.0) / 12.0;
+    r_[0] = static_cast<uint32_t>(base / std::pow(2.0, exponent));
 }
 
 } // namespace gba

@@ -13,7 +13,7 @@ Emulador de Game Boy Advance em C++20, escrito do zero usando o GBATEK como espe
 - [x] Leitura e validação do cabeçalho da ROM
 - [x] Janela SDL2
 - [x] CPU ARM7TDMI — estado ARM: todas as instruções, bancos de registradores, CPSR/SPSR, exceções, pipeline com busca antecipada
-- [x] BIOS em alto nível (HLE) sem BIOS real: SoftReset, RegisterRamReset, Halt, IntrWait, VBlankIntrWait, Div, DivArm, Sqrt, ArcTan, ArcTan2, CpuSet, CpuFastSet, BgAffineSet, ObjAffineSet, LZ77, RLE e SoundBias
+- [x] BIOS em alto nível (HLE) sem BIOS real: todas as funções usadas por jogos (reset, espera, divisão, raiz, ângulos, cópia, matrizes afins, BitUnPack, LZ77, Huffman, RLE, filtros de diferença, MidiKey2Freq, checksum); o driver de som da BIOS é ignorado
 - [x] CPU ARM7TDMI — estado Thumb: os 19 formatos; Halt e HALTCNT
 - [ ] Mais funções da BIOS em HLE (conforme o jogo pedir)
 - [x] Temporização do vídeo (VCOUNT, DISPSTAT, VBlank/HBlank) e interrupções (IE/IF/IME)

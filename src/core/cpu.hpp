@@ -85,6 +85,10 @@ private:
     void hleSoftReset();
     void hleBgAffineSet();
     void hleObjAffineSet();
+    void hleBitUnPack();
+    void hleHuffman();
+    void hleDiffUnFilter(bool sixteenBit, bool vram);
+    void hleMidiKey2Freq();
 
     uint32_t loadWord(uint32_t addr) const;
     uint32_t loadHalf(uint32_t addr) const;
