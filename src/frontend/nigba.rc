@@ -1,0 +1,3 @@
+// Icone do NiGBA no executavel (Windows). O SDL usa o primeiro icone do .exe tambem na janela
+// e na barra de tarefas.
+1 ICON "assets/nigba.ico"

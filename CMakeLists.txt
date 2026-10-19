@@ -109,6 +109,9 @@ if(SDL2_FOUND)
     src/frontend/debug_ui.cpp
     src/frontend/file_dialog.cpp)
   target_link_libraries(NiGBA PRIVATE gba_core imgui_sdl ${NIGBA_SDL} $<TARGET_NAME_IF_EXISTS:SDL2::SDL2main>)
+  if(WIN32)
+    target_sources(NiGBA PRIVATE src/frontend/nigba.rc) # ícone do executável
+  endif()
   if(NOT NIGBA_CONSOLE)
     set_target_properties(NiGBA PROPERTIES WIN32_EXECUTABLE TRUE) # só a janela, sem o terminal
   endif()

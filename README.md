@@ -80,6 +80,7 @@ O save fica ao lado da ROM, com o mesmo nome e extensão `.sav` (por exemplo `RO
 
 ```
 src/core/      núcleo sem dependências (gba = console completo; bus, cartucho, save, cpu ARM/Thumb, BIOS HLE, dma, timers, ppu, apu (áudio), analysis = ferramentas de engenharia reversa)
+src/frontend/assets/  ícone do programa (nigba.ico; nigba.png em 512 px para outros usos)
 src/frontend/  aplicação (SDL2 + Dear ImGui): app, ui, config, diagnóstico, diálogo de arquivos
 tests/         testes do núcleo, da CPU, do sistema, do vídeo e do áudio
 ```
