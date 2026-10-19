@@ -1,5 +1,6 @@
 // Testes do sistema: interrupções, tratador de IRQ da BIOS (HLE) e temporização do vídeo.
 #include <cstdio>
+#include <ctime>
 #include <initializer_list>
 #include <iterator>
 #include <vector>
@@ -580,6 +581,111 @@ static void testEeprom(int addrBits) {
     CHECK((g.bus().read16(0x0D000000) & 1) == 1);         // sem leitura pendente: "pronto"
 }
 
+// ------------------------------------------------------------------ relógio do cartucho (RTC)
+
+// Fala com o RTC como o Pokémon faz: pino por pino, pelo barramento (SCK = bit 0, SIO = bit 1, CS = bit 2).
+struct RtcTalker {
+    gba::Bus& bus;
+    void pins(uint16_t v) { bus.write16(0x080000C4, v); }
+    void begin() {
+        bus.write16(0x080000C8, 1);   // porta legível
+        bus.write16(0x080000C6, 7);   // os 3 pinos saindo do GBA
+        pins(1);                      // SCK alto, CS baixo
+        pins(5);                      // CS sobe
+    }
+    void sendByte(uint8_t b) {
+        bus.write16(0x080000C6, 7);
+        for (int i = 0; i < 8; ++i) {
+            const uint16_t bit = static_cast<uint16_t>((b >> i) & 1);
+            pins(static_cast<uint16_t>(4 | (bit << 1)));     // SCK baixo, dado em SIO
+            pins(static_cast<uint16_t>(5 | (bit << 1)));     // SCK sobe: o relógio lê o bit
+        }
+    }
+    uint8_t readByte() {
+        bus.write16(0x080000C6, 5);   // SIO vira entrada para o GBA
+        uint8_t b = 0;
+        for (int i = 0; i < 8; ++i) {
+            pins(4);
+            pins(5);
+            b = static_cast<uint8_t>(b | (((bus.read16(0x080000C4) >> 1) & 1) << i));
+        }
+        return b;
+    }
+    void end() { bus.write16(0x080000C6, 7); pins(1); }
+};
+
+static std::time_t fixedTime() {
+    std::tm t{};
+    t.tm_year = 2026 - 1900; t.tm_mon = 9; t.tm_mday = 19;   // 19/10/2026, uma segunda-feira
+    t.tm_hour = 14; t.tm_min = 35; t.tm_sec = 7; t.tm_isdst = -1;
+    return std::mktime(&t);
+}
+
+static void testRtc() {
+    auto rom = loopRom();
+    rom[0xC4] = 0xAB;                                       // código normal da ROM nesses endereços
+    gba::Gba g;
+    g.loadRom(rom);
+    g.reset();
+    auto& bus = g.bus();
+    bus.rtc().setClock(fixedTime);
+    CHECK(bus.read8(0x080000C4) == 0xAB);                   // porta não legível: a CPU vê a ROM
+
+    RtcTalker rtc{bus};
+    rtc.begin();
+    CHECK(bus.read8(0x080000C4) != 0xAB);                   // agora vê os pinos
+
+    rtc.sendByte(0x06 | (4 << 4) | 0x80);                   // ler o controle
+    CHECK(rtc.readByte() == 0x40);                          // modo 24 h, sem "falha de energia"
+    rtc.end();
+
+    rtc.begin();
+    rtc.sendByte(0x06 | (2 << 4) | 0x80);                   // ler data e hora (7 bytes, BCD)
+    uint8_t dt[7];
+    for (auto& b : dt) b = rtc.readByte();
+    rtc.end();
+    CHECK(dt[0] == 0x26 && dt[1] == 0x10 && dt[2] == 0x19); // 26/10/19
+    CHECK(dt[3] == 0x01);                                   // segunda-feira
+    CHECK(dt[4] == 0x14 && dt[5] == 0x35 && dt[6] == 0x07); // 14:35:07
+
+    rtc.begin();
+    rtc.sendByte(0x06 | (0 << 4));                          // reset: volta para o modo 12 h
+    rtc.end();
+    rtc.begin();
+    rtc.sendByte(0x06 | (6 << 4) | 0x80);                   // ler só a hora (3 bytes)
+    const uint8_t h = rtc.readByte(), m = rtc.readByte(), sec = rtc.readByte();
+    rtc.end();
+    CHECK(h == 0x02 && m == 0x35 && sec == 0x07);           // 14 h = 2 h no modo 12 h
+
+    rtc.begin();
+    rtc.sendByte(0x06 | (4 << 4));                          // gravar o controle...
+    rtc.sendByte(0x40);                                     // ...modo 24 h de novo
+    rtc.end();
+    rtc.begin();
+    rtc.sendByte(0x06 | (4 << 4) | 0x80);
+    CHECK(rtc.readByte() == 0x40);
+    rtc.end();
+
+    bus.write16(0x080000C8, 0);                             // porta volta a não ser legível
+    CHECK(bus.read8(0x080000C4) == 0xAB);
+}
+
+// Save states da versão 1 (antes do RTC) continuam carregando.
+static void testStateVersion1StillLoads() {
+    gba::Gba g;
+    g.loadRom(loopRom());
+    g.reset();
+    g.runFrame();
+    auto state = g.saveState();
+    auto rtcOnly = gba::StateArchive::writer();
+    g.bus().rtc().serialize(rtcOnly);
+    state.resize(state.size() - rtcOnly.data().size());    // tira o relógio do fim...
+    state[8] = 1; state[9] = state[10] = state[11] = 0;    // ...e marca como versão 1
+    bool ok = true;
+    try { g.loadState(state); } catch (const std::exception&) { ok = false; }
+    CHECK(ok);
+}
+
 int main() {
     testIoRules();
     testIrqThroughBiosStub();
@@ -602,6 +708,8 @@ int main() {
     testSoundRegisterRules();
     testEeprom(14);
     testEeprom(6);
+    testRtc();
+    testStateVersion1StillLoads();
     if (failures == 0) std::printf("Sistema: todos os testes passaram.\n");
     return failures == 0 ? 0 : 1;
 }

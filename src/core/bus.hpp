@@ -19,6 +19,7 @@
 #include <vector>
 
 #include "backup.hpp"
+#include "rtc.hpp"
 #include "state.hpp"
 
 namespace gba {
@@ -55,6 +56,7 @@ public:
     void installHleBiosStub();
     void loadRom(std::vector<uint8_t> data); // também detecta o tipo de save
     Backup& backup() { return backup_; }
+    Rtc& rtc() { return rtc_; }
     void serialize(StateArchive& ar);
 
     // Busca de instruções (não passa pela sonda).
@@ -130,6 +132,8 @@ private:
     std::array<uint8_t, 1024>&       oam_ = memory_->oam;
     std::vector<uint8_t>            rom_;
     mutable Backup                  backup_;
+    Rtc                             rtc_;
+    static bool isGpio(uint32_t addr) { return (addr >> 24) == 0x08 && (addr & 0xFFFFFF) >= 0xC4 && (addr & 0xFFFFFF) <= 0xC9; }
     bool isEepromAddress(uint32_t addr) const;
     const uint8_t* fastPointer(uint32_t addr, uint32_t size) const;
     uint16_t                        keyInput_ = 0x03FF;

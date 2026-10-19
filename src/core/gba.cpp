@@ -77,7 +77,7 @@ namespace gba {
 
 namespace {
 constexpr char kStateMagic[8] = {'G', 'B', 'A', 'E', 'M', 'U', 'S', 'T'};
-constexpr uint32_t kStateVersion = 1;
+constexpr uint32_t kStateVersion = 2; // 2: inclui o relógio do cartucho (a versão 1 continua aceita)
 } // namespace
 
 void Gba::serialize(StateArchive& ar) {
@@ -89,7 +89,7 @@ void Gba::serialize(StateArchive& ar) {
     }
     uint32_t version = kStateVersion;
     ar.value(version);
-    if (ar.loading() && version != kStateVersion) {
+    if (ar.loading() && (version < 1 || version > kStateVersion)) {
         throw std::runtime_error("save state de outra versão do NiGBA");
     }
     uint64_t hash = romHash_;
@@ -105,6 +105,7 @@ void Gba::serialize(StateArchive& ar) {
     ar.value(cycleBalance_);
     ar.value(instructions_);
     ar.value(frames_);
+    if (version >= 2) bus_.rtc().serialize(ar);
     if (ar.loading() && !ar.atEnd()) throw std::runtime_error("save state com dados sobrando (corrompido?)");
 }
 

@@ -229,6 +229,7 @@ uint8_t Bus::readRaw8(uint32_t addr) const {
         return backup_.read(addr);
     case 0x08: case 0x09: case 0x0A: case 0x0B: case 0x0C: case 0x0D: {
         const uint32_t off = addr & 0x1FFFFFF;
+        if (rtc_.readable() && isGpio(addr)) return static_cast<uint8_t>(rtc_.read(off & ~1u) >> ((off & 1) * 8));
         if (off < rom_.size()) return rom_[off];
         // Além do fim da ROM: o barramento devolve o próprio endereço/2.
         const uint16_t v = static_cast<uint16_t>((addr >> 1) & 0xFFFF);
@@ -262,6 +263,7 @@ const uint8_t* Bus::fastPointer(uint32_t addr, uint32_t size) const {
     case 0x03: return &iwram_[addr & 0x7FFF];
     case 0x08: case 0x09: case 0x0A: case 0x0B: case 0x0C: {
         const uint32_t off = addr & 0x1FFFFFF;
+        if (rtc_.readable() && (addr >> 24) == 0x08 && off < 0xCA && off + size > 0xC4) return nullptr; // porta do RTC
         return off + size <= rom_.size() ? &rom_[off] : nullptr;
     }
     default: return nullptr; // 0x0D fica de fora: pode ser o EEPROM
@@ -369,6 +371,7 @@ bool Bus::irqPending() const {
 }
 
 void Bus::write16(uint32_t addr, uint16_t value) {
+    if (isGpio(addr)) { rtc_.write(addr & 0xFE, value); return; } // porta do relógio do cartucho
     if ((addr >> 24) == 0x02 || (addr >> 24) == 0x03) {
         store16(const_cast<uint8_t*>(fastPointer(addr & ~1u, 2)), value);
         return;
@@ -434,6 +437,7 @@ void Bus::serialize(StateArchive& ar) {
     ar.value(lastFetch_);
     backup_.serialize(ar);
     if (ar.loading()) probes_.clear();
+    // O relógio do cartucho é serializado pelo Gba (a partir da versão 2 do formato).
 }
 
 } // namespace gba

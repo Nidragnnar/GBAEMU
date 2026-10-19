@@ -18,13 +18,14 @@ Emulador de Game Boy Advance em C++20, escrito do zero usando o GBATEK como espe
 - [x] Tratador de IRQ da BIOS (HLE) e teclado
 - [x] DMA: 4 canais, imediato, VBlank e HBlank, repetição e recarga
 - [x] PPU linha a linha: modos 0-5, backgrounds de tiles (16/256 cores, espelhamento, rolagem, prioridade), afins e bitmap
+- [x] Relógio do cartucho (RTC Seiko S-3511, porta GPIO) com a hora do computador: Pokémon Ruby/Sapphire/Emerald e derivados, Boktai
 - [x] Save: detecção automática, SRAM, Flash 64/128 KB e EEPROM 512 bytes/8 KB, arquivo .sav com gravação segura e automática
 - [x] Sprites: normais e afins (rotação/zoom, tamanho duplo), 12 tamanhos, 16/256 cores, espelhamento, mapeamento 1D/2D, prioridade com backgrounds e entre sprites, limite de ciclos por linha
 - [x] Janelas (WIN0, WIN1, janela de sprites e "fora"), blending (mistura, clarear, escurecer, sprites semitransparentes) e mosaico (BG e sprites)
 - [x] Timers: 4 canais, prescalers 1/64/256/1024, cascata, recarga e IRQ
 - [x] Áudio: 4 canais do Game Boy (quadradas com sweep, onda, ruído; duração e envelope) e filas A/B com DMA de som e timers, 32.768 Hz estéreo
 - [x] Ritmo pela placa de som (velocidade correta em qualquer monitor) e aceleração com Tab
-- [x] Save states (4 slots), com verificação de jogo e de versão
+- [x] Save states (4 slots), com verificação de jogo e de versão (estados antigos continuam carregando)
 - [x] Interface com Dear ImGui: menus, abrir ROM (diálogo, arrastar e soltar, recentes), pausar, reiniciar, escala, tela cheia, volume, tema pastel
 - [x] Configuração de teclas e controle (gamepad): remapeamento na janela Controles, analógico como direcional, gatilho direito acelera
 - [x] Janelas de depuração: CPU (registradores, flags, rastro, avançar quadro), memória (hexadecimal), VRAM (tiles), paletas, sprites (OAM com miniaturas) e registradores de I/O

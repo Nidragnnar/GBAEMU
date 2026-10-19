@@ -27,6 +27,7 @@ add_library(gba_core
   src/core/timers.cpp
   src/core/analysis.cpp
   src/core/apu.cpp
+  src/core/rtc.cpp
   src/core/ppu.cpp)
 target_include_directories(gba_core PUBLIC src)
 if(MSVC)
