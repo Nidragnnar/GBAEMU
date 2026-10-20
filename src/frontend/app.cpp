@@ -210,12 +210,9 @@ void App::handleEvent(const SDL_Event& ev) {
 bool App::runOneFrame(bool keepAudio) {
     try {
         console_->runFrame();
-        if (!cheats_.empty()) { // cheats ligados: aplicados a cada quadro, como no GameShark
-            const uint16_t pressed = static_cast<uint16_t>(~console_->bus().read16(0x04000130) & 0x03FF);
-            for (const auto& c : cheats_) {
-                if (c.enabled) gba::applyCheat(c.ops, console_->bus(), pressed);
-            }
-        }
+        // Sem código mestre, os cheats rodam a cada quadro. Com ele, só no gancho (ver updateCheatHook):
+        // muitos códigos gravam em variáveis temporárias (até na pilha), que só valem naquele instante.
+        if (!cheats_.empty() && !cheatHook_) applyEnabledCheats();
     } catch (const std::exception& e) {
         stopped_ = true;
         stopReason_ = e.what();
@@ -514,6 +511,33 @@ void App::loadCheats() {
         }
     } catch (const std::exception& e) {
         toast(std::string("Não deu para ler os cheats: ") + e.what());
+    }
+    updateCheatHook();
+}
+
+void App::applyEnabledCheats() {
+    const uint16_t pressed = static_cast<uint16_t>(~console_->bus().read16(0x04000130) & 0x03FF);
+    for (const auto& c : cheats_) {
+        if (c.enabled) gba::applyCheat(c.ops, console_->bus(), pressed);
+    }
+}
+
+// Com um código mestre ligado (gancho do CodeBreaker), os cheats rodam quando a CPU passa pelo endereço do
+// gancho, como no aparelho real; sem ele, uma vez por quadro.
+void App::updateCheatHook() {
+    cheatHook_ = 0;
+    for (const auto& c : cheats_) {
+        if (c.enabled && c.hook) { cheatHook_ = c.hook; break; }
+    }
+    hookHits_ = 0;
+    if (!console_) return;
+    if (cheatHook_) {
+        console_->setInstructionHook(cheatHook_, [this] {
+            applyEnabledCheats();
+            ++hookHits_;
+        });
+    } else {
+        console_->setInstructionHook(0, nullptr);
     }
 }
 

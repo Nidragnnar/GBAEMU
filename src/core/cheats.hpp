@@ -40,11 +40,15 @@ struct Cheat {
     CheatFormat format = CheatFormat::Auto;
     bool enabled = true;
     std::vector<CheatOp> ops;  // decodificado de "code"
+    uint32_t hook = 0;         // gancho do código mestre (CodeBreaker tipo 1); 0 = nenhum
 };
 
 // Decodifica um código. Lança CheatError dizendo a linha e o problema.
 std::vector<CheatOp> parseCheat(const std::string& code, CheatFormat format);
 CheatFormat detectCheatFormat(const std::string& code);
+// Gancho do CodeBreaker ("1AAAAAAA ...", no código mestre): os códigos rodam quando a CPU executa o endereço
+// 08AAAAAA, como o aparelho fazia. Muitos códigos de Pokémon dependem disso. 0 se não houver.
+uint32_t findCheatHook(const std::string& code, CheatFormat format);
 const char* cheatFormatName(CheatFormat format);
 
 // GameShark v1/v2: decifra (e cifra, para os testes) um par endereço/valor.

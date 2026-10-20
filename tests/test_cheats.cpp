@@ -118,11 +118,41 @@ static void testCheatFile() {
     CHECK(broken.size() == 1 && !broken[0].enabled); // código inválido fica guardado, mas desligado
 }
 
+// Gancho do CodeBreaker: o código mestre "1AAAAAAA" diz em que instrução os códigos rodam.
+static void testHook() {
+    CHECK(gba::findCheatHook("000014D1 000A\n1003DAE6 0007", gba::CheatFormat::Auto) == 0x0803DAE6u);
+    CHECK(gba::findCheatHook("10044ec8 0007", gba::CheatFormat::CodeBreaker) == 0x08044EC8u);
+    CHECK(gba::findCheatHook("82000102 C0DE", gba::CheatFormat::Auto) == 0);   // sem linha de gancho
+    CHECK(gba::findCheatHook("02000000:01", gba::CheatFormat::Auto) == 0);     // raw não tem gancho
+    const auto list = gba::deserializeCheats("[Mestre]\nativo=1\ncodigo=000014D1 000A\ncodigo=1003DAE6 0007\n");
+    CHECK(list.size() == 1 && list[0].hook == 0x0803DAE6u);
+
+    // O console chama a função quando a CPU vai executar o endereço do gancho. A ROM de zeros é uma
+    // sequência de instruções que não fazem nada, então a CPU passa por 08000080 logo no começo.
+    gba::Gba g;
+    std::vector<uint8_t> rom(0x1000, 0);
+    rom[0x200] = 0xFE; rom[0x201] = 0xFF; rom[0x202] = 0xFF; rom[0x203] = 0xEA; // em 08000200: b . (laço)
+    g.loadRom(rom);
+    g.reset();
+    int hits = 0;
+    g.setInstructionHook(0x08000080, [&hits] { ++hits; });
+    g.runFrame();
+    CHECK(hits == 1);                                // passou uma vez (depois fica no laço em 08000200)
+    g.setInstructionHook(0x08000200, [&hits] { ++hits; });
+    g.runFrame();
+    CHECK(hits > 1000);                              // o laço passa pelo gancho a cada volta
+    g.setInstructionHook(0, nullptr);                // desligado
+    const int before = hits;
+    g.runFrame();
+    CHECK(hits == before);
+}
+
 int main() {
     testRaw();
     testCodeBreaker();
     testGameShark();
     testCheatFile();
+    testHook();
     if (failures == 0) std::printf("Cheats: todos os testes passaram.\n");
     return failures == 0 ? 0 : 1;
 }

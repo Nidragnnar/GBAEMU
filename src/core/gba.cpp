@@ -46,6 +46,7 @@ void Gba::runCycles(int cycles) {
     while (cycleBalance_ > 0) {
         // Tempo de cada passo: ciclos internos da CPU + o que o barramento cobrou pelos acessos dela
         // (buscas, leituras, gravações) e por qualquer DMA que tenha rodado nesse meio tempo.
+        if (hookAddress_ && cpu_.pc() == hookAddress_ && hookFn_) hookFn_(); // gancho dos cheats
         bus_.idle(cpu_.step()); // ciclos internos: o prefetch do cartucho continua lendo durante eles
         const int spent = std::max(1, bus_.takeCycles());
         timers_.advance(spent - timersSynced_); // o que já foi adiantado no meio da instrução não conta de novo

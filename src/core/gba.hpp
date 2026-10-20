@@ -2,6 +2,7 @@
 // O console completo: barramento, CPU, DMA, timers, PPU e áudio, com o agendador que avança linha a linha.
 
 #include <cstdint>
+#include <functional>
 #include <set>
 #include <tuple>
 #include <vector>
@@ -45,6 +46,9 @@ public:
     void setProbing(bool on) { bus_.setProbing(on); }
     const std::vector<ProbeHit>& probeLog() const { return probeLog_; }
 
+    // Chama "fn" sempre que a CPU for executar a instrução em "address" (0 desliga). Usado pelos cheats.
+    void setInstructionHook(uint32_t address, std::function<void()> fn) { hookAddress_ = address; hookFn_ = std::move(fn); }
+
 private:
     void runCycles(int cycles);
 
@@ -57,6 +61,8 @@ private:
     bool hasBios_ = false;
     int64_t cycleBalance_ = 0; // ciclos que sobraram ou faltaram da fatia anterior
     int timersSynced_ = 0;     // ciclos do passo atual já repassados aos timers (no meio da instrução)
+    uint32_t hookAddress_ = 0;
+    std::function<void()> hookFn_;
     uint64_t instructions_ = 0;
     uint64_t frames_ = 0;
     uint64_t romHash_ = 0;

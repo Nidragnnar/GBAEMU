@@ -138,6 +138,15 @@ CheatFormat detectCheatFormat(const std::string& code) {
     return CheatFormat::GameShark;
 }
 
+uint32_t findCheatHook(const std::string& code, CheatFormat format) {
+    if (format == CheatFormat::Auto) format = detectCheatFormat(code);
+    if (format != CheatFormat::CodeBreaker) return 0;
+    for (const auto& line : splitLines(code)) {
+        if (line.text.size() == 12 && line.text[0] == '1') return 0x08000000u | (hex(line.text.substr(1, 7)) & 0x01FFFFFFu);
+    }
+    return 0;
+}
+
 const char* cheatFormatName(CheatFormat format) {
     switch (format) {
     case CheatFormat::Auto: return "Automático";
@@ -221,6 +230,7 @@ std::vector<Cheat> deserializeCheats(const std::string& text) {
     for (auto& c : cheats) {
         try {
             c.ops = parseCheat(c.code, c.format);
+            c.hook = findCheatHook(c.code, c.format);
         } catch (const CheatError&) {
             c.enabled = false; // código inválido fica guardado, mas desligado
         }

@@ -138,9 +138,12 @@ void App::drawCheatsWindow() {
     for (size_t i = 0; i < cheats_.size(); ++i) {
         auto& c = cheats_[i];
         ImGui::PushID(static_cast<int>(i));
-        if (c.ops.empty()) ImGui::BeginDisabled(); // código inválido no arquivo: não dá para ligar
-        if (ImGui::Checkbox(c.name.c_str(), &c.enabled)) saveCheats();
-        if (c.ops.empty()) ImGui::EndDisabled();
+        // Código inválido no arquivo: não dá para ligar. (Um código mestre sozinho não tem operações, só o
+        // gancho, e continua podendo ser ligado.)
+        const bool invalid = c.ops.empty() && c.hook == 0;
+        if (invalid) ImGui::BeginDisabled();
+        if (ImGui::Checkbox(c.name.c_str(), &c.enabled)) { saveCheats(); updateCheatHook(); }
+        if (invalid) ImGui::EndDisabled();
         if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s\n\n%s", gba::cheatFormatName(c.format), c.code.c_str());
         ImGui::SameLine(ImGui::GetWindowWidth() - 90);
         if (ImGui::SmallButton("Remover")) removeIndex = static_cast<int>(i);
@@ -149,6 +152,17 @@ void App::drawCheatsWindow() {
     if (removeIndex >= 0) {
         cheats_.erase(cheats_.begin() + removeIndex);
         saveCheats();
+        updateCheatHook();
+    }
+    if (cheatHook_) {
+        if (hookHits_ == 0) {
+            ImGui::TextColored(ImVec4(0.85f, 0.45f, 0.20f, 1.0f), "Código mestre: o gancho %08X ainda não rodou.", cheatHook_);
+            ImGui::TextDisabled("Ele só roda em certos momentos do jogo (num encontro, por exemplo).");
+            ImGui::TextDisabled("Se nunca rodar, o código mestre pode ser de outra versão da ROM.");
+        } else {
+            ImGui::TextDisabled("Código mestre: os cheats rodam no gancho %08X (rodou %llu vezes).", cheatHook_,
+                                static_cast<unsigned long long>(hookHits_));
+        }
     }
 
     ImGui::Separator();
@@ -164,9 +178,11 @@ void App::drawCheatsWindow() {
         c.format = static_cast<gba::CheatFormat>(cheatFormat_);
         try {
             c.ops = gba::parseCheat(c.code, c.format);
+            c.hook = gba::findCheatHook(c.code, c.format);
             if (c.format == gba::CheatFormat::Auto) c.format = gba::detectCheatFormat(c.code);
             cheats_.push_back(std::move(c));
             saveCheats();
+            updateCheatHook();
             cheatName_.fill(0);
             cheatCode_.fill(0);
             cheatError_.clear();

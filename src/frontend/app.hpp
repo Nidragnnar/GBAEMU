@@ -54,6 +54,8 @@ private:
     std::string cheatsPath() const;
     void loadCheats();
     void saveCheats();
+    void applyEnabledCheats();
+    void updateCheatHook();
     void drawCheatsWindow();
     void resetConsole();
     void togglePause() { if (console_) paused_ = !paused_; }
@@ -152,6 +154,8 @@ private:
     std::array<char, 4096> cheatCode_{};
     int cheatFormat_ = 0; // índice de gba::CheatFormat
     std::string cheatError_;
+    uint32_t cheatHook_ = 0;     // gancho do código mestre ligado (0 = cheats a cada quadro)
+    uint64_t hookHits_ = 0;      // quantas vezes o gancho rodou desde que foi ligado
 
     // Filtros de imagem
     std::array<uint32_t, 240 * 160> displayBuffer_{}; // imagem com as cores do GBA aplicadas
