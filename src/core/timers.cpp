@@ -1,5 +1,7 @@
 #include "timers.hpp"
 
+#include <algorithm>
+
 namespace gba {
 
 namespace {
@@ -11,6 +13,7 @@ constexpr uint16_t kEnable = 1 << 7;
 
 void Timers::reset() {
     timers_ = {};
+    startDelay_ = {};
     anyEnabled_ = false;
     for (int n = 0; n < 4; ++n) publish(n);
 }
@@ -36,6 +39,7 @@ void Timers::onIoWrite(uint32_t offset) {
         if (enable && !t.enabled) { // ao ligar, o contador começa na recarga
             t.counter = t.reload;
             t.prescalerAccum = 0;
+            startDelay_[n] = 2;         // no hardware, o timer só começa a contar 2 ciclos depois
             publish(n);
         }
         t.enabled = enable;
@@ -56,7 +60,13 @@ void Timers::advanceEnabled(int cycles) {
                 ticks = previousOverflows; // cascata: conta os estouros do timer anterior
             } else {
                 const uint32_t shift = kPrescalerShift[control & 3];
-                t.prescalerAccum += static_cast<uint32_t>(cycles);
+                int counted = cycles;
+                if (startDelay_[n] > 0) { // ainda no atraso de partida
+                    const int used = std::min(startDelay_[n], counted);
+                    startDelay_[n] -= used;
+                    counted -= used;
+                }
+                t.prescalerAccum += static_cast<uint32_t>(counted);
                 ticks = t.prescalerAccum >> shift;
                 t.prescalerAccum &= (1u << shift) - 1;
             }

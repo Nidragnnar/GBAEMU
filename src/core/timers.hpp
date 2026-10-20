@@ -20,6 +20,7 @@ public:
     void reset();
     void onIoWrite(uint32_t offset);
     void serialize(StateArchive& ar) { for (auto& t : timers_) ar.value(t); ar.value(anyEnabled_); }
+    void serializeStartDelays(StateArchive& ar) { ar.value(startDelay_); } // versão 5 do formato (no final)
     // Chamado depois de cada instrução com os ciclos gastos (o caso comum, tudo desligado, é imediato).
     void advance(int cycles) { if (anyEnabled_) advanceEnabled(cycles); }
     // Avisado quando o Timer 0 ou 1 estoura (as filas de som A/B consomem amostras nesse momento).
@@ -33,6 +34,10 @@ private:
         uint32_t prescalerAccum = 0; // ciclos acumulados até o próximo incremento
         uint16_t control = 0;        // cópia de CNT_H (evita ler o registrador a cada instrução)
     };
+
+    // Ciclos que faltam para cada timer começar a contar depois de ligado. Fica fora da struct Timer
+    // porque ela é gravada inteira no save state: um campo novo lá mudaria o formato no meio do arquivo.
+    std::array<int, 4> startDelay_{};
 
     void advanceEnabled(int cycles);
     void publish(int n) { bus_.ioWrite16Raw(0x100 + static_cast<uint32_t>(n) * 4, static_cast<uint16_t>(timers_[n].counter)); }

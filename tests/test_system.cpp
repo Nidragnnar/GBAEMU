@@ -173,6 +173,8 @@ static void testTimerBasics() {
     bus.write16(0x04000100, 0xFFF0);                   // recarga
     bus.write16(0x04000102, 0x00C0);                   // liga, IRQ, prescaler 1
     CHECK(bus.read16(0x04000100) == 0xFFF0);           // começa na recarga
+    t.advance(2);                                      // atraso de partida: 2 ciclos sem contar
+    CHECK(bus.read16(0x04000100) == 0xFFF0);
     t.advance(5);
     CHECK(bus.read16(0x04000100) == 0xFFF5);           // ler devolve o contador
     t.advance(11);                                     // 0xFFF5 + 11 estoura
@@ -185,6 +187,7 @@ static void testTimerBasics() {
     CHECK(bus.read16(0x04000100) == 0x1234);           // usada no próximo estouro
 
     bus.write16(0x04000106, 0x0083);                   // timer 1: prescaler 1024
+    t.advance(2);                                      // atraso de partida
     t.advance(1023);
     CHECK(bus.read16(0x04000104) == 0);
     t.advance(1);
@@ -203,7 +206,8 @@ static void testTimerCascade() {
     auto& bus = g.bus();
     bus.write16(0x04000100, 0xFFFF);                   // timer 0 estoura a cada ciclo
     bus.write16(0x04000102, 0x0080);
-    bus.write16(0x04000106, 0x0084);                   // timer 1 em cascata
+    bus.write16(0x04000106, 0x0084);                   // timer 1 em cascata (sem atraso próprio)
+    g.timers().advance(2);                             // atraso de partida do timer 0
     g.timers().advance(3);
     CHECK(bus.read16(0x04000104) == 3);
 }
@@ -679,8 +683,12 @@ static void testStateVersion1StillLoads() {
     auto state = g.saveState();
     auto rtcOnly = gba::StateArchive::writer();
     g.bus().rtc().serialize(rtcOnly);
-    // Campos das versões 2 (relógio) e 3 (registrador do DMA, 4 bytes) ficam no fim: tirá-los dá a versão 1.
-    state.resize(state.size() - rtcOnly.data().size() - 4);
+    auto timingOnly = gba::StateArchive::writer();
+    g.bus().serializeTiming(timingOnly);
+    // Campos das versões 2 (relógio), 3 (registrador do DMA, 4 bytes) e 4 (tempo do barramento) ficam no
+    // fim: tirá-los dá a versão 1.
+    // ...e 5 (atraso de partida dos timers: 4 ints).
+    state.resize(state.size() - rtcOnly.data().size() - 4 - timingOnly.data().size() - 4 * sizeof(int));
     state[8] = 1; state[9] = state[10] = state[11] = 0;    // ...e marca como versão 1
     bool ok = true;
     try { g.loadState(state); } catch (const std::exception&) { ok = false; }

@@ -63,6 +63,21 @@ public:
     uint16_t fetch16(uint32_t addr) const;
     uint32_t fetch32(uint32_t addr) const;
 
+    // ---- Tempo. Os acessos da CPU e do DMA passam por load/store, que cobram os ciclos de cada acesso
+    // (região, tamanho, sequencial ou não, WAITCNT, prefetch do cartucho). read/write continuam sem custo,
+    // para a BIOS em HLE, o depurador e os testes.
+    uint8_t load8(uint32_t a) const { account(a, 1, false); return read8(a); }
+    uint16_t load16(uint32_t a) const { account(a, 2, false); return read16(a); }
+    uint32_t load32(uint32_t a) const { account(a, 4, false); return read32(a); }
+    void store8(uint32_t a, uint8_t v) { account(a, 1, false); write8(a, v); }
+    void store16(uint32_t a, uint16_t v) { account(a, 2, false); write16(a, v); }
+    void store32(uint32_t a, uint32_t v) { account(a, 4, false); write32(a, v); }
+    void idle(int cycles) const;        // ciclos internos da CPU (o prefetch do cartucho continua)
+    int takeCycles() { const int c = cycles_; cycles_ = 0; return c; }
+    void updateWaitstates();            // recalcula os custos a partir do WAITCNT
+    void resetTiming();
+    void serializeTiming(StateArchive& ar);
+
     // Proteção da BIOS: fora dela, ler a BIOS devolve a última instrução que a BIOS buscou.
     void setPcInBios(bool inBios) { pcInBios_ = inBios; }
     void setBiosOpcode(uint32_t opcode) { biosOpcode_ = opcode; }
@@ -97,12 +112,29 @@ public:
 
     // Avisado depois de cada byte que a CPU grava em I/O (DMA e PPU reagem a alguns registradores).
     void setIoWriteHook(std::function<void(uint32_t offset)> hook) { ioWriteHook_ = std::move(hook); }
+    // Chamado antes de ler ou escrever um registrador de timer, para pô-los em dia no meio da instrução.
+    void setTimerSyncHook(std::function<void()> hook) { timerSyncHook_ = std::move(hook); }
+    int pendingCycles() const { return cycles_; } // ciclos já cobrados no passo atual
     bool irqPending() const; // IME ligado e algum bit em IE & IF
 
     // KEYINPUT (0x04000130): bits em 0 = botão pressionado. Padrão 0x03FF = nada pressionado.
     void setKeyInput(uint16_t value) { keyInput_ = value & 0x03FF; }
 
 private:
+    void account(uint32_t addr, int width, bool code) const;
+    void advancePrefetch(int cycles) const;
+
+    // Custo (em ciclos) de cada região por tamanho: N = não sequencial, S = sequencial.
+    std::array<uint8_t, 16> n16_{}, s16_{}, n32_{}, s32_{};
+    bool prefetchEnabled_ = false;
+    mutable int cycles_ = 0;
+    mutable uint32_t nextSequential_ = 0xFFFFFFFF; // endereço que tornaria o próximo acesso sequencial
+    // Buffer de prefetch do cartucho: halfwords já lidas a partir de prefetchHead_ (até 8).
+    mutable bool prefetchActive_ = false;
+    mutable uint32_t prefetchHead_ = 0;
+    mutable int prefetchCount_ = 0;
+    mutable int prefetchProgress_ = 0; // ciclos já gastos na leitura da próxima halfword
+
     // Retorna ponteiro para o byte da região, ou nullptr se não mapeado.
     // `writable` informa se a região aceita escrita da CPU.
     const uint8_t* resolve(uint32_t addr, bool& writable) const;
@@ -149,6 +181,7 @@ private:
     void probeRead(uint32_t addr, uint8_t value) const;
     uint8_t readRaw8(uint32_t addr) const;
     std::function<void(uint32_t)>   ioWriteHook_;
+    std::function<void()>           timerSyncHook_;
 };
 
 } // namespace gba

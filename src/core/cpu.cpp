@@ -81,9 +81,9 @@ int Cpu::step() {
     // Quando o tratador termina e a execução volta ao ponto da SWI, a espera recomeça.
     if (intrWaitFlags_ && !waitActive_ && pc() == waitResumePc_ && mode() != CpuMode::Irq) waitActive_ = true;
     if (waitActive_) {
-        const uint16_t check = bus_.read16(0x03007FF8);
+        const uint16_t check = bus_.load16(0x03007FF8);
         if (check & intrWaitFlags_) {
-            bus_.write16(0x03007FF8, static_cast<uint16_t>(check & ~intrWaitFlags_));
+            bus_.store16(0x03007FF8, static_cast<uint16_t>(check & ~intrWaitFlags_));
             intrWaitFlags_ = 0;
             waitActive_ = false;
             // Na BIOS real a IRQ é atendida dentro da SWI, que depois ainda executa o próprio
@@ -93,7 +93,7 @@ int Cpu::step() {
             waitActive_ = false; // suspende a espera enquanto o tratador roda
             waitResumePc_ = pc();
             raiseException(0x18, CpuMode::Irq, pc() + 4);
-            return 3;
+            return 0; // o reabastecimento do pipeline é cobrado pelo barramento
         } else {
             return kIdleCycles;
         }
@@ -103,7 +103,7 @@ int Cpu::step() {
     // a CPU retoma exatamente na instrução que seria executada agora.
     if (!(cpsr_ & flag::I) && bus_.irqPending()) {
         raiseException(0x18, CpuMode::Irq, pc() + 4);
-        return 3;
+        return 0;
     }
 
     trace_[traceNext_] = {pc(), thumb() ? (pipe_[0] & 0xFFFF) : pipe_[0], thumb()};
@@ -128,7 +128,9 @@ int Cpu::step() {
     pipe_[1] = bus_.fetch32(r_[15]);
     flushed_ = false;
 
-    int cycles = 1;
+    // A partir daqui, cada instrução devolve só os ciclos internos (I); as buscas, os acessos à
+    // memória e o reabastecimento do pipeline depois de um desvio são cobrados pelo barramento.
+    int cycles = 0;
     if (conditionPassed(instr >> 28)) cycles = executeArm(instr);
     if (!flushed_) r_[15] += 4;
     return cycles;
@@ -220,12 +222,12 @@ void Cpu::raiseException(uint32_t vector, CpuMode newMode, uint32_t returnAddr) 
 // ---------------------------------------------------------------- utilitários
 
 // Leituras com as peculiaridades do ARM7 para endereços desalinhados.
-uint32_t Cpu::loadWord(uint32_t addr) const { return ror(bus_.read32(addr), (addr & 3) * 8); }
-uint32_t Cpu::loadHalf(uint32_t addr) const { return ror(bus_.read16(addr), (addr & 1) * 8); }
-uint32_t Cpu::loadSignedByte(uint32_t addr) const { return alu::signExtend8(bus_.read8(addr)); }
+uint32_t Cpu::loadWord(uint32_t addr) const { return ror(bus_.load32(addr), (addr & 3) * 8); }
+uint32_t Cpu::loadHalf(uint32_t addr) const { return ror(bus_.load16(addr), (addr & 1) * 8); }
+uint32_t Cpu::loadSignedByte(uint32_t addr) const { return alu::signExtend8(bus_.load8(addr)); }
 uint32_t Cpu::loadSignedHalf(uint32_t addr) const {
     // LDRSH em endereço ímpar vira leitura de byte com sinal.
-    return (addr & 1) ? loadSignedByte(addr) : alu::signExtend16(bus_.read16(addr));
+    return (addr & 1) ? loadSignedByte(addr) : alu::signExtend16(bus_.load16(addr));
 }
 
 bool Cpu::conditionPassed(uint32_t cond) const {
@@ -297,7 +299,7 @@ int Cpu::executeArm(uint32_t instr) {
     if ((instr & 0x0C000000) == 0x00000000) return armDataProcessing(instr);
     if ((instr & 0x0E000010) == 0x06000010) {
         raiseException(0x04, CpuMode::Undefined, r_[15] - 4);
-        return 3;
+        return 0;
     }
     if ((instr & 0x0C000000) == 0x04000000) return armSingleTransfer(instr);
     if ((instr & 0x0E000000) == 0x08000000) return armBlockTransfer(instr);
@@ -305,24 +307,24 @@ int Cpu::executeArm(uint32_t instr) {
     if ((instr & 0x0F000000) == 0x0F000000) { // SWI
         if (hleBios_) return hleSwi((instr >> 16) & 0xFF); // no modo ARM o número fica nos bits 16-23
         raiseException(0x08, CpuMode::Supervisor, r_[15] - 4);
-        return 3;
+        return 0;
     }
     // Coprocessador: o GBA não tem nenhum, então é instrução indefinida.
     raiseException(0x04, CpuMode::Undefined, r_[15] - 4);
-    return 3;
+    return 0;
 }
 
 int Cpu::armBranchExchange(uint32_t instr) {
     const uint32_t target = r_[instr & 0xF];
     jumpTo(target, (target & 1) != 0); // bit 0 escolhe Thumb
-    return 3;
+    return 0;
 }
 
 int Cpu::armBranch(uint32_t instr) {
     const int32_t offset = static_cast<int32_t>(instr << 8) >> 6; // 24 bits com sinal, ×4
     if (instr & (1 << 24)) r_[14] = r_[15] - 4;                    // BL guarda o retorno
     jumpTo(r_[15] + static_cast<uint32_t>(offset));
-    return 3;
+    return 0;
 }
 
 int Cpu::armDataProcessing(uint32_t instr) {
@@ -332,7 +334,7 @@ int Cpu::armDataProcessing(uint32_t instr) {
     const uint32_t rn = (instr >> 16) & 0xF;
     const uint32_t rd = (instr >> 12) & 0xF;
 
-    int cycles = 1;
+    int cycles = 0; // +1 ciclo interno com deslocamento por registrador
     uint32_t rnValue = r_[rn];
     uint32_t op2;
     bool carry = cpsr_ & flag::C;
@@ -388,7 +390,7 @@ int Cpu::armDataProcessing(uint32_t instr) {
         // "MOVS pc, lr" e afins: retorno de exceção, restaura o CPSR a partir do SPSR.
         if (setFlags) setCpsr(spsr());
         jumpTo(result, thumb());
-        return cycles + 2;
+        return cycles;
     }
 
     if (!writeResult && rd == 15 && setFlags) {
@@ -409,7 +411,7 @@ int Cpu::armDataProcessing(uint32_t instr) {
 int Cpu::armMrs(uint32_t instr) {
     const bool useSpsr = instr & (1 << 22);
     r_[(instr >> 12) & 0xF] = useSpsr ? spsr() : cpsr_;
-    return 1;
+    return 0;
 }
 
 int Cpu::armMsr(uint32_t instr) {
@@ -429,7 +431,7 @@ int Cpu::armMsr(uint32_t instr) {
         mask &= ~flag::T;                                 // MSR não troca ARM/Thumb
         setCpsr((cpsr_ & ~mask) | (value & mask));
     }
-    return 1;
+    return 0;
 }
 
 int Cpu::armMultiply(uint32_t instr) {
@@ -437,11 +439,12 @@ int Cpu::armMultiply(uint32_t instr) {
     const uint32_t rs = (instr >> 8) & 0xF, rm = instr & 0xF;
     const bool accumulate = instr & (1 << 21);
 
-    uint32_t result = r_[rm] * r_[rs];
+    const uint32_t multiplier = r_[rs]; // antes de gravar: rd pode ser o próprio rs
+    uint32_t result = r_[rm] * multiplier;
     if (accumulate) result += r_[rn];
     r_[rd] = result;
     if (instr & (1 << 20)) setNZ(result); // C fica sem significado no ARMv4; mantemos
-    return 1 + multiplyCycles(r_[rs]) + (accumulate ? 1 : 0);
+    return multiplyCycles(multiplier) + (accumulate ? 1 : 0);
 }
 
 int Cpu::armMultiplyLong(uint32_t instr) {
@@ -450,9 +453,10 @@ int Cpu::armMultiplyLong(uint32_t instr) {
     const bool isSigned = instr & (1 << 22);
     const bool accumulate = instr & (1 << 21);
 
+    const uint32_t multiplier = r_[rs]; // antes de gravar: rdLo/rdHi podem ser o próprio rs
     uint64_t result = isSigned
-        ? static_cast<uint64_t>(int64_t{static_cast<int32_t>(r_[rm])} * static_cast<int32_t>(r_[rs]))
-        : uint64_t{r_[rm]} * r_[rs];
+        ? static_cast<uint64_t>(int64_t{static_cast<int32_t>(r_[rm])} * static_cast<int32_t>(multiplier))
+        : uint64_t{r_[rm]} * multiplier;
     if (accumulate) result += (uint64_t{r_[rdHi]} << 32) | r_[rdLo];
 
     r_[rdLo] = static_cast<uint32_t>(result);
@@ -461,7 +465,7 @@ int Cpu::armMultiplyLong(uint32_t instr) {
         setFlag(flag::N, (result >> 63) != 0);
         setFlag(flag::Z, result == 0);
     }
-    return 2 + multiplyCycles(r_[rs]) + (accumulate ? 1 : 0);
+    return 1 + (isSigned ? multiplyCycles(multiplier) : alu::multiplyCyclesUnsigned(multiplier)) + (accumulate ? 1 : 0);
 }
 
 int Cpu::armSwap(uint32_t instr) {
@@ -469,15 +473,15 @@ int Cpu::armSwap(uint32_t instr) {
     const uint32_t addr = r_[rn];
     const uint32_t source = r_[rm];
     if (instr & (1 << 22)) {
-        const uint8_t old = bus_.read8(addr);
-        bus_.write8(addr, static_cast<uint8_t>(source));
+        const uint8_t old = bus_.load8(addr);
+        bus_.store8(addr, static_cast<uint8_t>(source));
         r_[rd] = old;
     } else {
         const uint32_t old = loadWord(addr);
-        bus_.write32(addr, source);
+        bus_.store32(addr, source);
         r_[rd] = old;
     }
-    return 4;
+    return 1;
 }
 
 int Cpu::armHalfwordTransfer(uint32_t instr) {
@@ -493,15 +497,15 @@ int Cpu::armHalfwordTransfer(uint32_t instr) {
     const bool writeback = (!pre || wb) && rn != 15;
 
     if (!load) { // STRH
-        bus_.write16(addr, static_cast<uint16_t>(r_[rd] + (rd == 15 ? 4 : 0)));
+        bus_.store16(addr, static_cast<uint16_t>(r_[rd] + (rd == 15 ? 4 : 0)));
         if (writeback) r_[rn] = offsetAddr;
-        return 2;
+        return 0;
     }
 
     const uint32_t value = sh == 1 ? loadHalf(addr) : sh == 2 ? loadSignedByte(addr) : loadSignedHalf(addr);
     if (writeback) r_[rn] = offsetAddr; // antes da carga: se rn == rd, a carga prevalece
     writeReg(rd, value);
-    return rd == 15 ? 5 : 3;
+    return 1; // ciclo interno da leitura
 }
 
 int Cpu::armSingleTransfer(uint32_t instr) {
@@ -521,16 +525,16 @@ int Cpu::armSingleTransfer(uint32_t instr) {
 
     if (!load) {
         const uint32_t value = r_[rd] + (rd == 15 ? 4 : 0); // STR do PC grava endereço + 12
-        if (byte) bus_.write8(addr, static_cast<uint8_t>(value));
-        else bus_.write32(addr, value);
+        if (byte) bus_.store8(addr, static_cast<uint8_t>(value));
+        else bus_.store32(addr, value);
         if (writeback) r_[rn] = offsetAddr;
-        return 2;
+        return 0;
     }
 
-    const uint32_t value = byte ? bus_.read8(addr) : loadWord(addr);
+    const uint32_t value = byte ? bus_.load8(addr) : loadWord(addr);
     if (writeback) r_[rn] = offsetAddr;
     writeReg(rd, value);
-    return rd == 15 ? 5 : 3;
+    return 1; // ciclo interno da leitura
 }
 
 int Cpu::armBlockTransfer(uint32_t instr) {
@@ -557,7 +561,7 @@ int Cpu::armBlockTransfer(uint32_t instr) {
         if (wb) r_[rn] = finalBase; // se rn estiver na lista, o valor carregado prevalece
         for (uint32_t i = 0; i < 16; ++i) {
             if (!(list & (1u << i))) continue;
-            const uint32_t value = bus_.read32(addr);
+            const uint32_t value = bus_.load32(addr);
             addr += 4;
             if (i == 15) {
                 if (psrOrUser) setCpsr(spsr()); // LDM com ^ e PC: retorno de exceção
@@ -568,7 +572,7 @@ int Cpu::armBlockTransfer(uint32_t instr) {
                 r_[i] = value;
             }
         }
-        return count + 2 + (loadsPc ? 2 : 0);
+        return 1; // LDM: ciclo interno
     }
 
     bool first = true;
@@ -579,12 +583,12 @@ int Cpu::armBlockTransfer(uint32_t instr) {
         else value = userBank ? readUserReg(i) : r_[i];
         // Base na lista: se for o primeiro registrador grava o valor antigo, senão o novo.
         if (i == rn && !first && wb) value = finalBase;
-        bus_.write32(addr, value);
+        bus_.store32(addr, value);
         addr += 4;
         first = false;
     }
     if (wb) r_[rn] = finalBase;
-    return count + 1;
+    return 0; // STM
 }
 
 } // namespace gba

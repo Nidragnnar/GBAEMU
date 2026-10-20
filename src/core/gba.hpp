@@ -56,6 +56,7 @@ private:
     Apu apu_{bus_};
     bool hasBios_ = false;
     int64_t cycleBalance_ = 0; // ciclos que sobraram ou faltaram da fatia anterior
+    int timersSynced_ = 0;     // ciclos do passo atual já repassados aos timers (no meio da instrução)
     uint64_t instructions_ = 0;
     uint64_t frames_ = 0;
     uint64_t romHash_ = 0;
@@ -63,6 +64,7 @@ private:
     std::vector<ProbeHit> probeLog_;
     std::set<std::tuple<uint32_t, int, uint32_t>> probeSeen_;
     void collectProbes();
+    void syncTimers();
 };
 
 } // namespace gba

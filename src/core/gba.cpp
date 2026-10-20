@@ -1,5 +1,7 @@
 #include "gba.hpp"
 
+#include <algorithm>
+
 #include <cstring>
 #include <stdexcept>
 
@@ -8,6 +10,7 @@ namespace gba {
 Gba::Gba() {
     timers_.setOverflowHook([this](int timer, uint32_t count) { apu_.onTimerOverflow(timer, count); });
     apu_.setFifoRequest([this](int fifo) { dma_.soundRequest(fifo); });
+    bus_.setTimerSyncHook([this] { syncTimers(); });
     bus_.setIoWriteHook([this](uint32_t offset) {
         dma_.onIoWrite(offset);
         ppu_.onIoWrite(offset);
@@ -32,6 +35,7 @@ void Gba::reset() {
     dma_.reset();
     timers_.reset();
     apu_.reset();
+    bus_.resetTiming();
     cycleBalance_ = 0;
 }
 
@@ -39,12 +43,25 @@ void Gba::runCycles(int cycles) {
     // Uma instrução pode ultrapassar a fatia; a diferença é descontada da próxima.
     cycleBalance_ += cycles;
     while (cycleBalance_ > 0) {
-        const int spent = cpu_.step();
-        timers_.advance(spent);
+        // Tempo de cada passo: ciclos internos da CPU + o que o barramento cobrou pelos acessos dela
+        // (buscas, leituras, gravações) e por qualquer DMA que tenha rodado nesse meio tempo.
+        bus_.idle(cpu_.step()); // ciclos internos: o prefetch do cartucho continua lendo durante eles
+        const int spent = std::max(1, bus_.takeCycles());
+        timers_.advance(spent - timersSynced_); // o que já foi adiantado no meio da instrução não conta de novo
+        timersSynced_ = 0;
         apu_.advance(spent);
         if (bus_.hasProbes()) collectProbes();
         cycleBalance_ -= spent;
         ++instructions_;
+    }
+}
+
+// Põe os timers em dia no meio de uma instrução (antes de a CPU ler ou escrever um registrador deles).
+void Gba::syncTimers() {
+    const int pending = bus_.pendingCycles();
+    if (pending > timersSynced_) {
+        timers_.advance(pending - timersSynced_);
+        timersSynced_ = pending;
     }
 }
 
@@ -77,7 +94,7 @@ namespace gba {
 
 namespace {
 constexpr char kStateMagic[8] = {'G', 'B', 'A', 'E', 'M', 'U', 'S', 'T'};
-constexpr uint32_t kStateVersion = 3; // 2: relógio do cartucho; 3: registrador de passagem do DMA (anteriores aceitas)
+constexpr uint32_t kStateVersion = 5; // 2: relógio; 3: registrador do DMA; 4: tempo do barramento; 5: atraso dos timers
 } // namespace
 
 void Gba::serialize(StateArchive& ar) {
@@ -108,6 +125,9 @@ void Gba::serialize(StateArchive& ar) {
     // Campos novos sempre no final: assim, cada versão antiga é o começo exato da nova.
     if (version >= 2) bus_.rtc().serialize(ar);
     if (version >= 3) dma_.serializeLatch(ar);
+    if (version >= 4) bus_.serializeTiming(ar);
+    else if (ar.loading()) bus_.resetTiming();
+    if (version >= 5) timers_.serializeStartDelays(ar);
     if (ar.loading() && !ar.atEnd()) throw std::runtime_error("save state com dados sobrando (corrompido?)");
 }
 

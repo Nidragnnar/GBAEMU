@@ -77,14 +77,14 @@ void Dma::soundRequest(int fifo) {
 void Dma::transferUnit(uint32_t src, uint32_t dst, bool word) {
     const bool readable = src >= 0x02000000;
     if (word) {
-        if (readable) latch_ = bus_.read32(src & ~3u);
-        bus_.write32(dst & ~3u, latch_);
+        if (readable) latch_ = bus_.load32(src & ~3u);
+        bus_.store32(dst & ~3u, latch_);
     } else {
         if (readable) {
-            const uint32_t v = bus_.read16(src & ~1u);
+            const uint32_t v = bus_.load16(src & ~1u);
             latch_ = v | (v << 16); // a halfword aparece nas duas metades
         }
-        bus_.write16(dst & ~1u, static_cast<uint16_t>(latch_ >> ((dst & 2) * 8)));
+        bus_.store16(dst & ~1u, static_cast<uint16_t>(latch_ >> ((dst & 2) * 8)));
     }
 }
 
@@ -98,6 +98,7 @@ void Dma::transfer(int n) {
     const auto step = [unit](uint32_t control) -> uint32_t {
         return control == 1 ? 0u - unit : control == 2 ? 0u : unit;
     };
+    bus_.idle(2); // o DMA leva 2 ciclos internos para começar a transferência
     // Lendo do cartucho (ROM), a origem sempre avança: o cartucho tem um contador de endereço próprio que
     // incrementa a cada leitura sequencial, então "fixo" e "decrementando" não têm efeito ali.
     const bool fromRom = (ch.src >> 24) >= 0x08 && (ch.src >> 24) <= 0x0D;

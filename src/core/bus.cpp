@@ -71,13 +71,13 @@ bool wordHasReadable(uint32_t off) {
 } // namespace
 
 namespace {
-inline uint16_t load16(const uint8_t* p) { return static_cast<uint16_t>(p[0] | (p[1] << 8)); }
-inline uint32_t load32(const uint8_t* p) {
+inline uint16_t bytesToLe16(const uint8_t* p) { return static_cast<uint16_t>(p[0] | (p[1] << 8)); }
+inline uint32_t bytesToLe32(const uint8_t* p) {
     return static_cast<uint32_t>(p[0]) | (static_cast<uint32_t>(p[1]) << 8) | (static_cast<uint32_t>(p[2]) << 16) |
            (static_cast<uint32_t>(p[3]) << 24);
 }
-inline void store16(uint8_t* p, uint16_t v) { p[0] = static_cast<uint8_t>(v); p[1] = static_cast<uint8_t>(v >> 8); }
-inline void store32(uint8_t* p, uint32_t v) {
+inline void le16ToBytes(uint8_t* p, uint16_t v) { p[0] = static_cast<uint8_t>(v); p[1] = static_cast<uint8_t>(v >> 8); }
+inline void le32ToBytes(uint8_t* p, uint32_t v) {
     p[0] = static_cast<uint8_t>(v); p[1] = static_cast<uint8_t>(v >> 8);
     p[2] = static_cast<uint8_t>(v >> 16); p[3] = static_cast<uint8_t>(v >> 24);
 }
@@ -88,7 +88,16 @@ constexpr uint32_t kMaxRomSize = 32u * 1024u * 1024u;
 constexpr uint32_t kDispcnt = 0x000; // offset de DISPCNT na região de I/O
 } // namespace
 
-Bus::Bus() = default;
+Bus::Bus() { updateWaitstates(); }
+
+void Bus::resetTiming() {
+    cycles_ = 0;
+    nextSequential_ = 0xFFFFFFFF;
+    prefetchActive_ = false;
+    prefetchCount_ = 0;
+    prefetchProgress_ = 0;
+    updateWaitstates();
+}
 
 void Bus::loadBios(std::vector<uint8_t> data) {
     if (data.size() != bios_.size()) {
@@ -161,7 +170,113 @@ uint8_t* Bus::resolveMut(uint32_t addr) {
     return writable ? const_cast<uint8_t*>(p) : nullptr;
 }
 
+// ---------------------------------------------------------------- tempo
+
+void Bus::updateWaitstates() {
+    const uint16_t w = static_cast<uint16_t>(io_[0x204] | (io_[0x205] << 8));
+    static constexpr uint8_t kN[4] = {4, 3, 2, 8}; // espera do primeiro acesso (não sequencial)
+    for (int r = 0; r < 16; ++r) { n16_[r] = s16_[r] = n32_[r] = s32_[r] = 1; }
+    n16_[0x2] = s16_[0x2] = 3; n32_[0x2] = s32_[0x2] = 6;     // EWRAM: barramento de 16 bits, 2 esperas
+    for (int r : {0x5, 0x6}) { n32_[r] = s32_[r] = 2; }       // paleta e VRAM: barramento de 16 bits
+    const auto rom = [this](int region, int n, int s) {      // cartucho: barramento de 16 bits
+        for (int r : {region, region + 1}) {
+            n16_[r] = static_cast<uint8_t>(1 + n);
+            s16_[r] = static_cast<uint8_t>(1 + s);
+            n32_[r] = static_cast<uint8_t>(1 + n + 1 + s);   // duas metades: N + S
+            s32_[r] = static_cast<uint8_t>(2 * (1 + s));
+        }
+    };
+    rom(0x8, kN[(w >> 2) & 3], (w & 0x0010) ? 1 : 2);        // WS0
+    rom(0xA, kN[(w >> 5) & 3], (w & 0x0080) ? 1 : 4);        // WS1
+    rom(0xC, kN[(w >> 8) & 3], (w & 0x0400) ? 1 : 8);        // WS2 (inclui a EEPROM)
+    for (int r : {0xE, 0xF}) n16_[r] = s16_[r] = n32_[r] = s32_[r] = static_cast<uint8_t>(1 + kN[w & 3]); // SRAM
+    prefetchEnabled_ = w & 0x4000;
+    if (!prefetchEnabled_) { prefetchActive_ = false; prefetchCount_ = 0; prefetchProgress_ = 0; }
+}
+
+// O prefetch do cartucho lê as próximas halfwords enquanto a CPU faz outra coisa (acessa a RAM ou
+// executa ciclos internos), ao ritmo de um acesso sequencial do cartucho, até encher 8 halfwords.
+void Bus::advancePrefetch(int cycles) const {
+    if (!prefetchActive_ || prefetchCount_ >= 8) return;
+    const int region = static_cast<int>((prefetchHead_ >> 24) & 0xF);
+    const int step = s16_[region];
+    prefetchProgress_ += cycles;
+    while (prefetchCount_ < 8 && prefetchProgress_ >= step) {
+        prefetchProgress_ -= step;
+        ++prefetchCount_;
+    }
+    if (prefetchCount_ >= 8) prefetchProgress_ = 0;
+}
+
+void Bus::idle(int cycles) const {
+    if (cycles <= 0) return;
+    cycles_ += cycles;
+    advancePrefetch(cycles);
+    nextSequential_ = 0xFFFFFFFF; // depois de ciclos internos, o próximo acesso é não sequencial
+}
+
+void Bus::account(uint32_t addr, int width, bool code) const {
+    const int region = (addr >> 28) ? 0x1 : static_cast<int>((addr >> 24) & 0xF); // >= 0x10000000: 1 ciclo
+    const bool rom = region >= 0x8 && region <= 0xD;
+    // Sequencial: o endereço seguinte ao do último acesso. No cartucho, cruzar um bloco de 128 KB
+    // recomeça como não sequencial.
+    // Mudar de região no meio de uma sequência também a quebra.
+    const bool sequential = addr == nextSequential_ && !(rom && (addr & 0x1FFFF) == 0) &&
+                            ((addr - static_cast<uint32_t>(width)) >> 24) == (addr >> 24);
+    nextSequential_ = addr + static_cast<uint32_t>(width);
+    const bool wide = width == 4;
+
+    if (!rom) {
+        const int cost = sequential ? (wide ? s32_[region] : s16_[region]) : (wide ? n32_[region] : n16_[region]);
+        cycles_ += cost;
+        advancePrefetch(cost);
+        return;
+    }
+    if (code && prefetchEnabled_ && prefetchActive_ && addr == prefetchHead_) {
+        // Busca de instrução que o prefetch já tinha (ou estava) lendo.
+        const int needed = wide ? 2 : 1;
+        prefetchHead_ = addr + static_cast<uint32_t>(width);
+        if (prefetchCount_ >= needed) {
+            // Já estava no buffer: 1 ciclo, e o prefetch segue lendo a próxima em paralelo.
+            prefetchCount_ -= needed;
+            cycles_ += 1;
+            advancePrefetch(1);
+        } else {
+            // Ainda não chegou: espera o cartucho terminar. Durante a espera o prefetch está ocupado
+            // com esta mesma instrução, então esse tempo não conta como progresso para a próxima.
+            cycles_ += std::max(1, (needed - prefetchCount_) * s16_[region] - prefetchProgress_);
+            prefetchCount_ = 0;
+            prefetchProgress_ = 0;
+        }
+        return;
+    }
+    cycles_ += sequential ? (wide ? s32_[region] : s16_[region]) : (wide ? n32_[region] : n16_[region]);
+    // Leitura de dados no cartucho com o prefetch no meio de uma halfword: ele precisa abortar a
+    // leitura em andamento, o que custa 1 ciclo (ajustado contra a suíte de testes do mGBA).
+    if (!code && prefetchActive_ && prefetchCount_ < 8 && prefetchProgress_ > 0) cycles_ += 1;
+    if (code && prefetchEnabled_) {
+        // Desvio (ou primeira busca): o buffer recomeça a partir da instrução seguinte.
+        prefetchActive_ = true;
+        prefetchHead_ = addr + static_cast<uint32_t>(width);
+    } else {
+        prefetchActive_ = false; // leitura de dados no cartucho interrompe o prefetch
+    }
+    prefetchCount_ = 0;
+    prefetchProgress_ = 0;
+}
+
+void Bus::serializeTiming(StateArchive& ar) {
+    ar.value(cycles_);
+    ar.value(nextSequential_);
+    ar.value(prefetchActive_);
+    ar.value(prefetchHead_);
+    ar.value(prefetchCount_);
+    ar.value(prefetchProgress_);
+    if (ar.loading()) updateWaitstates();
+}
+
 uint16_t Bus::fetch16(uint32_t addr) const {
+    account(addr, 2, true);
     fetching_ = true;
     const uint16_t v = read16(addr);
     fetching_ = false;
@@ -171,6 +286,7 @@ uint16_t Bus::fetch16(uint32_t addr) const {
 }
 
 uint32_t Bus::fetch32(uint32_t addr) const {
+    account(addr, 4, true);
     fetching_ = true;
     const uint32_t v = read32(addr);
     fetching_ = false;
@@ -278,6 +394,7 @@ uint16_t Bus::sioRead16(uint32_t halfOffset) const {
 }
 
 uint8_t Bus::readIo(uint32_t offset) const {
+    if (offset >= 0x100 && offset <= 0x10F && timerSyncHook_) timerSyncHook_();
     if (offset == 0x130) return static_cast<uint8_t>(keyInput_);       // KEYINPUT vem do teclado,
     if (offset == 0x131) return static_cast<uint8_t>(keyInput_ >> 8);  // não da memória de I/O
     if ((offset >= 0x120 && offset < 0x12C) || offset == 0x134 || offset == 0x135 || (offset >= 0x140 && offset < 0x142) ||
@@ -307,7 +424,7 @@ const uint8_t* Bus::fastPointer(uint32_t addr, uint32_t size) const {
 }
 
 uint16_t Bus::read16(uint32_t addr) const {
-    if (const uint8_t* p = fastPointer(addr & ~1u, 2)) return load16(p);
+    if (const uint8_t* p = fastPointer(addr & ~1u, 2)) return bytesToLe16(p);
     if (isEepromAddress(addr)) return backup_.eepromRead(); // um bit por halfword
     if ((addr >> 24) >= 0x0E) {
         // SRAM tem barramento de 8 bits: o byte se repete nas duas metades.
@@ -319,7 +436,7 @@ uint16_t Bus::read16(uint32_t addr) const {
 }
 
 uint32_t Bus::read32(uint32_t addr) const {
-    if (const uint8_t* p = fastPointer(addr & ~3u, 4)) return load32(p);
+    if (const uint8_t* p = fastPointer(addr & ~3u, 4)) return bytesToLe32(p);
     if ((addr >> 24) >= 0x0E) {
         const uint8_t b = read8(addr);
         return b * 0x01010101u;
@@ -362,6 +479,7 @@ void Bus::write8(uint32_t addr, uint8_t value) {
 }
 
 void Bus::ioWrite8(uint32_t offset, uint8_t value) {
+    if (offset >= 0x100 && offset <= 0x10F && timerSyncHook_) timerSyncHook_();
     if (probing_ && (offset == 0x204 || offset == 0x205) && probes_.size() < 256) {
         probes_.push_back({ProbeKind::WaitcntWrite, 0x04000000 + offset, value});
     }
@@ -389,6 +507,7 @@ void Bus::ioWrite8(uint32_t offset, uint8_t value) {
         io_[offset] = value;
         break;
     }
+    if (offset == 0x204 || offset == 0x205) updateWaitstates();
     if (ioWriteHook_) ioWriteHook_(offset);
 }
 
@@ -409,7 +528,7 @@ bool Bus::irqPending() const {
 void Bus::write16(uint32_t addr, uint16_t value) {
     if (isGpio(addr)) { rtc_.write(addr & 0xFE, value); return; } // porta do relógio do cartucho
     if ((addr >> 24) == 0x02 || (addr >> 24) == 0x03) {
-        store16(const_cast<uint8_t*>(fastPointer(addr & ~1u, 2)), value);
+        le16ToBytes(const_cast<uint8_t*>(fastPointer(addr & ~1u, 2)), value);
         return;
     }
     if (isEepromAddress(addr)) { backup_.eepromWrite(value); return; }
@@ -433,7 +552,7 @@ void Bus::write16(uint32_t addr, uint16_t value) {
 
 void Bus::write32(uint32_t addr, uint32_t value) {
     if ((addr >> 24) == 0x02 || (addr >> 24) == 0x03) {
-        store32(const_cast<uint8_t*>(fastPointer(addr & ~3u, 4)), value);
+        le32ToBytes(const_cast<uint8_t*>(fastPointer(addr & ~3u, 4)), value);
         return;
     }
     if ((addr >> 24) >= 0x0E) {

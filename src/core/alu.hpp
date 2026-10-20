@@ -28,6 +28,14 @@ inline uint32_t subWithCarry(uint32_t a, uint32_t b, bool carryIn, bool& carry, 
 }
 
 // Ciclos internos da multiplicação: dependem de quantos bytes altos do multiplicador são 0 ou todos 1.
+// Ciclos internos do multiplicador (8 bits por ciclo, parando cedo). Sem sinal (UMULL/UMLAL), só para
+// quando os bits restantes são zero; com sinal (MUL/MLA/SMULL/SMLAL), também quando são todos 1.
+inline int multiplyCyclesUnsigned(uint32_t rs) {
+    if ((rs >> 8) == 0) return 1;
+    if ((rs >> 16) == 0) return 2;
+    if ((rs >> 24) == 0) return 3;
+    return 4;
+}
 inline int multiplyCycles(uint32_t rs) {
     if ((rs >> 8) == 0 || (rs >> 8) == 0x00FFFFFF) return 1;
     if ((rs >> 16) == 0 || (rs >> 16) == 0xFFFF) return 2;
