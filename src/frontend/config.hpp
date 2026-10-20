@@ -11,6 +11,9 @@ struct Config {
     bool mute = false;
     int volume = 80;                     // 0-100
     int stateSlot = 1;                   // 1-4
+    bool gbaColors = false;              // cores da tela do GBA original
+    bool smoothing = false;              // suavização bilinear
+    bool lcdGrid = false;                // grade fina entre os pixels
     // Teclas (scancodes do SDL) na ordem dos bits do KEYINPUT: A B SELECT START → ← ↑ ↓ R L.
     std::array<int, 10> keys{};
     // Botões do controle (SDL_GameControllerButton), mesma ordem; -1 = nenhum.

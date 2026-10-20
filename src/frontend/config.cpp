@@ -45,6 +45,9 @@ Config Config::load(const std::string& file) {
             else if (key == "escala") c.scale = std::clamp(std::stoi(value), 1, 8);
             else if (key == "mudo") c.mute = value == "1";
             else if (key == "volume") c.volume = std::clamp(std::stoi(value), 0, 100);
+            else if (key == "cores_gba") c.gbaColors = value == "1";
+            else if (key == "suavizar") c.smoothing = value == "1";
+            else if (key == "grade_lcd") c.lcdGrid = value == "1";
             else if (key == "slot") c.stateSlot = std::clamp(std::stoi(value), 1, 4);
             else if (key == "teclas" || key == "controle") {
                 auto& target = key == "teclas" ? c.keys : c.padButtons;
@@ -63,6 +66,7 @@ void Config::save(const std::string& file) const {
     std::ostringstream out;
     out << "# Preferências do NiGBA\n";
     out << "escala=" << scale << "\nmudo=" << (mute ? 1 : 0) << "\nvolume=" << volume << "\nslot=" << stateSlot << "\n";
+    out << "cores_gba=" << (gbaColors ? 1 : 0) << "\nsuavizar=" << (smoothing ? 1 : 0) << "\ngrade_lcd=" << (lcdGrid ? 1 : 0) << "\n";
     out << "teclas=";
     for (size_t i = 0; i < keys.size(); ++i) out << (i ? "," : "") << keys[i];
     out << "\ncontrole=";

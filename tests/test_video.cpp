@@ -2,6 +2,7 @@
 #include <cstdio>
 #include <vector>
 
+#include "core/color.hpp"
 #include "core/gba.hpp"
 
 static int failures = 0;
@@ -505,10 +506,35 @@ static void testMosaic() {
     CHECK(c.pixel(0, 1) == argb(kRed));                // a linha 1 repete a linha 0
 }
 
+// Cores da tela do GBA: preto continua preto, branco fica quase branco, cores puras perdem saturação,
+// o brilho só cresce com o valor do canal, e a conversão em lote é igual à de cada cor.
+static void testLcdColorCorrection() {
+    const auto ch = [](uint32_t c, int shift) { return static_cast<int>((c >> shift) & 0xFF); };
+    CHECK((gba::gbaLcdColor(0xFF000000u) & 0xFFFFFF) == 0);
+    const uint32_t white = gba::gbaLcdColor(0xFFF8F8F8u);
+    CHECK(ch(white, 16) > 230 && ch(white, 8) > 230 && ch(white, 0) > 230); // (252, 238, 242): levemente rosado, como a tela real
+    const uint32_t red = gba::gbaLcdColor(0xFFF80000u);           // vermelho puro...
+    CHECK(ch(red, 16) > 200 && ch(red, 8) > 20 && ch(red, 0) > 60); // ...ganha verde e azul (menos saturado)
+    int last = -1;
+    bool monotonic = true;
+    for (uint32_t v = 0; v < 32; ++v) {
+        const int g = ch(gba::gbaLcdColor(0xFF000000u | ((v << 3) << 8)), 8);
+        monotonic = monotonic && g >= last;
+        last = g;
+    }
+    CHECK(monotonic);
+    std::vector<uint32_t> in = {0xFF102030u, 0xFFF80000u, 0xFF00F800u, 0xFFFFFFFFu}, out(in.size());
+    gba::applyGbaLcdColors(in.data(), out.data(), in.size());
+    bool same = true;
+    for (size_t i = 0; i < in.size(); ++i) same = same && out[i] == gba::gbaLcdColor(in[i]);
+    CHECK(same);
+}
+
 int main() {
     testDmaImmediate();
     testDmaFill();
     testImmediateDmaStartDelay();
+    testLcdColorCorrection();
     testDmaVBlankRepeat();
     testTextBackground();
     testPriority();

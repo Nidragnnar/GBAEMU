@@ -194,6 +194,14 @@ void App::drawMenuBar() {
             ImGui::EndMenu();
         }
         if (ImGui::MenuItem("Tela cheia", "F11", fullscreen_)) toggleFullscreen();
+        ImGui::Separator();
+        bool changed = false;
+        changed |= ImGui::MenuItem("Cores do GBA original", nullptr, &config_.gbaColors);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("A tela do GBA era mais escura e menos saturada que um monitor;\nos jogos foram pintados para ela.");
+        changed |= ImGui::MenuItem("Suavizar imagem", nullptr, &config_.smoothing);
+        changed |= ImGui::MenuItem("Efeito de tela LCD", nullptr, &config_.lcdGrid);
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("Grade fina entre os pixels, como na tela real (a partir de 3x).");
+        if (changed) config_.save(configPath_);
         ImGui::EndMenu();
     }
 

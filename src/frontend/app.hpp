@@ -5,6 +5,7 @@
 #include <SDL.h>
 
 #include <cstdint>
+#include <array>
 #include <memory>
 #include <string>
 #include <utility>
@@ -62,6 +63,7 @@ private:
     uint16_t readKeys() const;
     bool padFastForward() const;
     bool rewindHeld() const;
+    void drawLcdGrid(const SDL_FRect& dst);
     void openPad(int deviceIndex);
     void closePad(int32_t instanceId);
     std::string padName() const;
@@ -137,6 +139,11 @@ private:
 
     // Voltar no tempo: uma foto a cada kRewindInterval quadros, 120 fotos = ~20 s de histórico.
     static constexpr uint64_t kRewindInterval = 10;
+
+    // Filtros de imagem
+    std::array<uint32_t, 240 * 160> displayBuffer_{}; // imagem com as cores do GBA aplicadas
+    SDL_Texture* gridTexture_ = nullptr;               // grade do efeito LCD
+    int gridW_ = 0, gridH_ = 0;
     gba::RewindBuffer rewind_{120};
     bool rewinding_ = false;
     int rewindTimer_ = 0;

@@ -25,6 +25,12 @@ CONTROLES (todos podem ser trocados em Ajuda > Controles)
   Controles de Xbox, PlayStation e genéricos funcionam: é só conectar.
   O gatilho direito acelera e o esquerdo volta no tempo.
 
+IMAGEM (menu Vídeo)
+  Cores do GBA original: deixa as cores como na tela do aparelho, mais
+  suaves (os jogos foram pintados para ela).
+  Suavizar imagem: tira o aspecto de pixels quadrados.
+  Efeito de tela LCD: grade fina entre os pixels (janela 3x ou maior).
+
 TRADUÇÕES E PATCHES
   Para jogar uma tradução (ou outro hack distribuído como patch .ips, .ups
   ou .bps), coloque o patch na mesma pasta da ROM, com o mesmo nome:

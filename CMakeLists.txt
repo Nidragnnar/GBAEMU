@@ -31,6 +31,7 @@ add_library(gba_core
   src/core/patch.cpp
   src/core/png.cpp
   src/core/rewind.cpp
+  src/core/color.cpp
   src/core/ppu.cpp)
 target_include_directories(gba_core PUBLIC src)
 if(MSVC)

@@ -11,6 +11,7 @@
 #include <filesystem>
 
 #include "core/cartridge.hpp"
+#include "core/color.hpp"
 #include "core/patch.hpp"
 #include "core/png.hpp"
 #include "frontend/diagnostics.hpp"
@@ -104,6 +105,7 @@ void App::shutdown() {
     if (audio_) SDL_CloseAudioDevice(audio_);
     if (vramTexture_) SDL_DestroyTexture(vramTexture_);
     if (spriteTexture_) SDL_DestroyTexture(spriteTexture_);
+    if (gridTexture_) SDL_DestroyTexture(gridTexture_);
     if (texture_) SDL_DestroyTexture(texture_);
     if (renderer_) SDL_DestroyRenderer(renderer_);
     SDL_DestroyWindow(window_);
@@ -297,6 +299,36 @@ uint16_t App::readKeys() const {
 }
 
 // Gatilho direito (RT/R2) acelera, como o Tab.
+// Efeito de tela LCD: uma textura do tamanho da imagem na tela, branca, com linhas cinza na borda de cada
+// pixel do GBA, desenhada por cima com mistura multiplicativa (branco não muda nada; cinza escurece).
+// É refeita só quando o tamanho muda. Abaixo de 3x a grade cobriria demais a imagem, então não aparece.
+void App::drawLcdGrid(const SDL_FRect& dst) {
+    const int w = static_cast<int>(dst.w), h = static_cast<int>(dst.h);
+    if (w < gba::kScreenWidth * 3 || h < gba::kScreenHeight * 3) return;
+    if (!gridTexture_ || gridW_ != w || gridH_ != h) {
+        if (gridTexture_) SDL_DestroyTexture(gridTexture_);
+        gridTexture_ = SDL_CreateTexture(renderer_, SDL_PIXELFORMAT_ARGB8888, SDL_TEXTUREACCESS_STATIC, w, h);
+        if (!gridTexture_) return;
+        gridW_ = w;
+        gridH_ = h;
+        std::vector<bool> lineX(static_cast<size_t>(w)), lineY(static_cast<size_t>(h));
+        for (int i = 1; i <= gba::kScreenWidth; ++i) lineX[static_cast<size_t>(std::min(w - 1, i * w / gba::kScreenWidth - 1))] = true;
+        for (int i = 1; i <= gba::kScreenHeight; ++i) lineY[static_cast<size_t>(std::min(h - 1, i * h / gba::kScreenHeight - 1))] = true;
+        std::vector<uint32_t> px(static_cast<size_t>(w) * static_cast<size_t>(h));
+        for (int y = 0; y < h; ++y) {
+            for (int x = 0; x < w; ++x) {
+                const int lines = (lineX[static_cast<size_t>(x)] ? 1 : 0) + (lineY[static_cast<size_t>(y)] ? 1 : 0);
+                const uint32_t v = lines == 0 ? 0xFF : lines == 1 ? 0xC4 : 0x9C; // 77% / 61% de brilho
+                px[static_cast<size_t>(y) * static_cast<size_t>(w) + static_cast<size_t>(x)] = 0xFF000000u | (v << 16) | (v << 8) | v;
+            }
+        }
+        SDL_UpdateTexture(gridTexture_, nullptr, px.data(), w * static_cast<int>(sizeof(uint32_t)));
+        SDL_SetTextureBlendMode(gridTexture_, SDL_BLENDMODE_MOD);
+    }
+    const SDL_FRect area{dst.x, dst.y, static_cast<float>(w), static_cast<float>(h)};
+    SDL_RenderCopyF(renderer_, gridTexture_, nullptr, &area);
+}
+
 // Voltar no tempo: segurar R (se o R não estiver mapeado para um botão do GBA) ou o gatilho esquerdo.
 bool App::rewindHeld() const {
     if (capture_ != Capture::None) return false;
@@ -332,8 +364,14 @@ void App::render() {
 
     if (console_) {
         if (stopped_ || paused_) console_->ppu().renderFrame(); // mantém a imagem na tela
-        SDL_UpdateTexture(texture_, nullptr, console_->ppu().framebuffer().data(),
-                          gba::kScreenWidth * static_cast<int>(sizeof(uint32_t)));
+        const auto& frame = console_->ppu().framebuffer();
+        const uint32_t* pixels = frame.data();
+        if (config_.gbaColors) { // cores da tela do GBA original
+            gba::applyGbaLcdColors(frame.data(), displayBuffer_.data(), frame.size());
+            pixels = displayBuffer_.data();
+        }
+        SDL_UpdateTexture(texture_, nullptr, pixels, gba::kScreenWidth * static_cast<int>(sizeof(uint32_t)));
+        SDL_SetTextureScaleMode(texture_, config_.smoothing ? SDL_ScaleModeLinear : SDL_ScaleModeNearest);
         // Maior tamanho que cabe na área abaixo dos menus, mantendo a proporção 3:2.
         int w = 0, h = 0;
         SDL_GetRendererOutputSize(renderer_, &w, &h);
@@ -343,6 +381,7 @@ void App::render() {
         SDL_FRect dst{(static_cast<float>(w) - gba::kScreenWidth * s) / 2, top + (areaH - gba::kScreenHeight * s) / 2,
                       gba::kScreenWidth * s, gba::kScreenHeight * s};
         SDL_RenderCopyF(renderer_, texture_, nullptr, &dst);
+        if (config_.lcdGrid) drawLcdGrid(dst);
     }
 
     ImGui_ImplSDLRenderer2_NewFrame();
