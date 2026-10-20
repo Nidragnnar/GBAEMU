@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "core/patch.hpp"
+#include "core/png.hpp"
 
 static int failures = 0;
 #define CHECK(cond)                                                                   \
@@ -129,12 +130,61 @@ static void testUnknownFormat() {
     CHECK(errorOf(rom16(), {'N', 'O', 'P', 'E'}).find("não é um patch") != std::string::npos);
 }
 
+// PNG: confere a assinatura, os CRCs de cada "chunk" e reconstrói os pixels dos blocos armazenados.
+static uint32_t be32(const Bytes& b, size_t at) {
+    return (uint32_t{b[at]} << 24) | (uint32_t{b[at + 1]} << 16) | (uint32_t{b[at + 2]} << 8) | b[at + 3];
+}
+static void testPng() {
+    const int w = 7, h = 3;
+    std::vector<uint32_t> px(w * h);
+    for (int i = 0; i < w * h; ++i) px[i] = 0xFF000000u | (static_cast<uint32_t>(i * 10) << 16) | (0x80u << 8) | static_cast<uint32_t>(255 - i);
+    const Bytes png = gba::encodePng(px.data(), w, h);
+    CHECK(png.size() > 8 && png[0] == 0x89 && png[1] == 'P' && png[2] == 'N' && png[3] == 'G');
+
+    Bytes idat;
+    size_t pos = 8;
+    bool sawEnd = false;
+    while (pos + 12 <= png.size()) {
+        const uint32_t len = be32(png, pos);
+        const std::string type(png.begin() + static_cast<long>(pos + 4), png.begin() + static_cast<long>(pos + 8));
+        CHECK(gba::crc32(png.data() + pos + 4, len + 4) == be32(png, pos + 8 + len)); // CRC de cada chunk
+        if (type == "IHDR") CHECK(be32(png, pos + 8) == static_cast<uint32_t>(w) && be32(png, pos + 12) == static_cast<uint32_t>(h));
+        if (type == "IDAT") idat.insert(idat.end(), png.begin() + static_cast<long>(pos + 8), png.begin() + static_cast<long>(pos + 8 + len));
+        if (type == "IEND") sawEnd = true;
+        pos += 12 + len;
+    }
+    CHECK(sawEnd);
+    // zlib: 2 bytes de cabeçalho, blocos armazenados (tipo, tamanho, ~tamanho, dados) e o Adler-32.
+    Bytes raw;
+    size_t z = 2;
+    bool last = false;
+    while (!last && z + 5 <= idat.size()) {
+        last = idat[z] & 1;
+        const uint32_t len = idat[z + 1] | (idat[z + 2] << 8);
+        CHECK(((idat[z + 3] | (idat[z + 4] << 8)) ^ 0xFFFFu) == len);
+        raw.insert(raw.end(), idat.begin() + static_cast<long>(z + 5), idat.begin() + static_cast<long>(z + 5 + len));
+        z += 5 + len;
+    }
+    CHECK(raw.size() == static_cast<size_t>(h * (1 + w * 3)));
+    bool pixelsOk = raw.size() == static_cast<size_t>(h * (1 + w * 3));
+    for (int y = 0; pixelsOk && y < h; ++y) {
+        pixelsOk = raw[static_cast<size_t>(y * (1 + w * 3))] == 0; // filtro "nenhum"
+        for (int x = 0; pixelsOk && x < w; ++x) {
+            const size_t at = static_cast<size_t>(y * (1 + w * 3) + 1 + x * 3);
+            const uint32_t p = px[static_cast<size_t>(y * w + x)];
+            pixelsOk = raw[at] == ((p >> 16) & 0xFF) && raw[at + 1] == ((p >> 8) & 0xFF) && raw[at + 2] == (p & 0xFF);
+        }
+    }
+    CHECK(pixelsOk);
+}
+
 int main() {
     testCrc32();
     testIps();
     testUps();
     testBps();
     testUnknownFormat();
-    if (failures == 0) std::printf("Patches (IPS, UPS, BPS): todos os testes passaram.\n");
+    testPng();
+    if (failures == 0) std::printf("Patches (IPS, UPS, BPS) e PNG: todos os testes passaram.\n");
     return failures == 0 ? 0 : 1;
 }

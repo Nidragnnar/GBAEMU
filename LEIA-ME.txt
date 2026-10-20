@@ -19,6 +19,7 @@ CONTROLES (todos podem ser trocados em Ajuda > Controles)
   Tab (segurar) . acelerar           Esc ....... pausar
   F5 / F8 ....... salvar / carregar estado
   F11 ........... tela cheia
+  F12 ........... capturar a tela (salva em "Capturas", ao lado da ROM)
 
   Controles de Xbox, PlayStation e genéricos funcionam: é só conectar.
   O gatilho direito acelera.

@@ -148,6 +148,7 @@ void App::drawMenuBar() {
             ImGui::EndMenu();
             if (!chosen.empty()) openRom(chosen); // fora do laço: openRom altera a lista
         }
+        if (ImGui::MenuItem("Capturar tela", "F12", false, console_ != nullptr)) takeScreenshot();
         if (ImGui::MenuItem("Fechar ROM", nullptr, false, console_ != nullptr)) closeRom();
         ImGui::Separator();
         if (ImGui::MenuItem("Sair", "Alt+F4")) running_ = false;
@@ -385,6 +386,7 @@ void App::drawControlsWindow() {
                 ImGui::BulletText("Ctrl+O / Ctrl+R abrir ROM / reiniciar");
                 ImGui::BulletText("F11             tela cheia");
                 ImGui::BulletText("F10             avançar 1 quadro (pausa)");
+                ImGui::BulletText("F12             capturar a tela (PNG)");
                 ImGui::BulletText("F1 / F2         diagnóstico no terminal");
                 ImGui::EndTabItem();
             }

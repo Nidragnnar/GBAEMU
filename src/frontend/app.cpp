@@ -7,10 +7,12 @@
 #include <algorithm>
 #include <cctype>
 #include <cstdio>
+#include <ctime>
 #include <filesystem>
 
 #include "core/cartridge.hpp"
 #include "core/patch.hpp"
+#include "core/png.hpp"
 #include "frontend/diagnostics.hpp"
 #include "frontend/file_dialog.hpp"
 
@@ -195,6 +197,7 @@ void App::handleEvent(const SDL_Event& ev) {
     else if (key == SDLK_F8) loadStateSlot(config_.stateSlot);
     else if (key == SDLK_F11) toggleFullscreen();
     else if (key == SDLK_F10) stepFrame();
+    else if (key == SDLK_F12) takeScreenshot();
     else if (key == SDLK_F1 && console_) diag::dumpState(*console_, frame_);
     else if (key == SDLK_F2 && console_) diag::dumpTrace(*console_);
 }
@@ -415,6 +418,38 @@ void App::openRom(const std::string& path, std::string patchPath, bool usePatch)
     if (audio_) SDL_ClearQueuedAudio(audio_);
     config_.addRecent(path);
     config_.save(configPath_);
+}
+
+// Captura de tela: PNG na resolução do GBA (240×160), numa pasta "Capturas" ao lado da ROM, com o nome
+// do jogo e a data e hora: "Pokemon FireRed 2026-10-19 21-30-05.png".
+void App::takeScreenshot() {
+    if (!console_) return;
+    try {
+        const auto rom = gba::utf8Path(romPath_);
+        const auto dir = rom.parent_path() / "Capturas";
+        std::filesystem::create_directories(dir);
+
+        const std::time_t now = std::time(nullptr);
+        std::tm t{};
+#ifdef _WIN32
+        localtime_s(&t, &now);
+#else
+        localtime_r(&now, &t);
+#endif
+        char stamp[32];
+        std::strftime(stamp, sizeof stamp, "%Y-%m-%d %H-%M-%S", &t);
+        const std::string base = gba::pathToUtf8(rom.stem()) + " " + stamp;
+        auto file = dir / gba::utf8Path(base + ".png");
+        for (int n = 2; std::filesystem::exists(file); ++n) { // várias capturas no mesmo segundo
+            file = dir / gba::utf8Path(base + " (" + std::to_string(n) + ").png");
+        }
+
+        const auto& frame = console_->ppu().framebuffer();
+        gba::writeFileSafely(gba::pathToUtf8(file), gba::encodePng(frame.data(), 240, 160));
+        toast("Captura salva: " + gba::pathToUtf8(file.filename()));
+    } catch (const std::exception& e) {
+        toast(std::string("Não deu para salvar a captura: ") + e.what());
+    }
 }
 
 void App::closeRom() {

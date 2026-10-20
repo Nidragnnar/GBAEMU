@@ -29,6 +29,7 @@ add_library(gba_core
   src/core/apu.cpp
   src/core/rtc.cpp
   src/core/patch.cpp
+  src/core/png.cpp
   src/core/ppu.cpp)
 target_include_directories(gba_core PUBLIC src)
 if(MSVC)

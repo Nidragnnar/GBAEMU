@@ -47,6 +47,7 @@ private:
     std::string findPatchFor(const std::string& romPath) const;
     static bool isPatchFile(const std::string& path);
     void closeRom();
+    void takeScreenshot();
     void resetConsole();
     void togglePause() { if (console_) paused_ = !paused_; }
     void saveStateSlot(int slot);
