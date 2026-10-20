@@ -4,7 +4,7 @@
 
 Emulador de Game Boy Advance em C++20, escrito do zero usando o GBATEK como especificação.
 
-## Estado atual (etapa 1)
+## Estado atual
 
 - [x] Barramento de memória com o mapa completo e os espelhos (BIOS, EWRAM, IWRAM, I/O, paleta, VRAM, OAM, ROM, SRAM)
 - [x] Regras de escrita de 8 bits (paleta/VRAM duplicam, OAM ignora), SRAM de 8 bits, open bus da ROM
