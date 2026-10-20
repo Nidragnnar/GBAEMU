@@ -11,6 +11,7 @@ Gba::Gba() {
     timers_.setOverflowHook([this](int timer, uint32_t count) { apu_.onTimerOverflow(timer, count); });
     apu_.setFifoRequest([this](int fifo) { dma_.soundRequest(fifo); });
     bus_.setTimerSyncHook([this] { syncTimers(); });
+    bus_.setDmaKickHook([this] { dma_.runPending(); });
     bus_.setIoWriteHook([this](uint32_t offset) {
         dma_.onIoWrite(offset);
         ppu_.onIoWrite(offset);
@@ -94,7 +95,8 @@ namespace gba {
 
 namespace {
 constexpr char kStateMagic[8] = {'G', 'B', 'A', 'E', 'M', 'U', 'S', 'T'};
-constexpr uint32_t kStateVersion = 5; // 2: relógio; 3: registrador do DMA; 4: tempo do barramento; 5: atraso dos timers
+constexpr uint32_t kStateVersion = 6; // 2: relógio; 3: registrador do DMA; 4: tempo do barramento; 5: atraso dos timers;
+                                      // 6: DMA imediato esperando para começar
 } // namespace
 
 void Gba::serialize(StateArchive& ar) {
@@ -128,6 +130,10 @@ void Gba::serialize(StateArchive& ar) {
     if (version >= 4) bus_.serializeTiming(ar);
     else if (ar.loading()) bus_.resetTiming();
     if (version >= 5) timers_.serializeStartDelays(ar);
+    if (version >= 6) {
+        bus_.serializeDmaSchedule(ar);
+        dma_.serializePending(ar);
+    }
     if (ar.loading() && !ar.atEnd()) throw std::runtime_error("save state com dados sobrando (corrompido?)");
 }
 

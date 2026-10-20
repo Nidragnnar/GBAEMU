@@ -11,6 +11,7 @@
 //   0x08000000  ROM   até 32 MB  (3 janelas: 0x08, 0x0A, 0x0C)
 //   0x0E000000  Save (SRAM ou Flash, barramento de 8 bits) — ver backup.hpp
 
+#include <algorithm>
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -73,10 +74,22 @@ public:
     void store16(uint32_t a, uint16_t v) { account(a, 2, false); write16(a, v); }
     void store32(uint32_t a, uint32_t v) { account(a, 4, false); write32(a, v); }
     void idle(int cycles) const;        // ciclos internos da CPU (o prefetch do cartucho continua)
+    // Acessos do DMA: a origem e o destino têm, cada um, a sua própria sequência (o DMA informa se o
+    // acesso é sequencial), e o prefetch do cartucho fica parado enquanto o DMA ocupa o barramento.
+    uint32_t dmaLoad(uint32_t a, bool word, bool sequential) const;
+    void dmaStore(uint32_t a, uint32_t v, bool word, bool sequential);
+    void dmaIdle(int cycles) const { cycles_ += cycles; }       // ciclos internos do DMA (sem prefetch)
+    // DMA imediato: só toma o barramento alguns ciclos depois de ligado; até lá a CPU continua. Quando a
+    // contagem zera, o DMA roda antes do próximo acesso (o gancho chama o Dma).
+    void scheduleDma(int delay) { if (dmaCountdown_ < 0 || delay < dmaCountdown_) dmaCountdown_ = delay; }
+    void setDmaKickHook(std::function<void()> hook) { dmaKickHook_ = std::move(hook); }
+    void flushPendingDma() const { if (dmaCountdown_ >= 0) fireDma(); }
+    void dmaFinished() const { nextSequential_ = 0xFFFFFFFF; } // a CPU volta com um acesso não sequencial
     int takeCycles() { const int c = cycles_; cycles_ = 0; return c; }
     void updateWaitstates();            // recalcula os custos a partir do WAITCNT
     void resetTiming();
     void serializeTiming(StateArchive& ar);
+    void serializeDmaSchedule(StateArchive& ar); // versão 6 do formato (no final)
 
     // Proteção da BIOS: fora dela, ler a BIOS devolve a última instrução que a BIOS buscou.
     void setPcInBios(bool inBios) { pcInBios_ = inBios; }
@@ -123,6 +136,10 @@ public:
 private:
     void account(uint32_t addr, int width, bool code) const;
     void advancePrefetch(int cycles) const;
+    void accountDma(uint32_t addr, bool word, bool sequential) const;
+    void accountCpu(uint32_t addr, int width, bool code) const;
+    void fireDma() const;
+    void countDownDma(int spent) const { if (dmaCountdown_ > 0) dmaCountdown_ = std::max(0, dmaCountdown_ - spent); }
 
     // Custo (em ciclos) de cada região por tamanho: N = não sequencial, S = sequencial.
     std::array<uint8_t, 16> n16_{}, s16_{}, n32_{}, s32_{};
@@ -182,6 +199,8 @@ private:
     uint8_t readRaw8(uint32_t addr) const;
     std::function<void(uint32_t)>   ioWriteHook_;
     std::function<void()>           timerSyncHook_;
+    std::function<void()>           dmaKickHook_;
+    mutable int                     dmaCountdown_ = -1; // -1: nenhum DMA imediato esperando
 };
 
 } // namespace gba

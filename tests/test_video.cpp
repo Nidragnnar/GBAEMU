@@ -36,10 +36,28 @@ static void testDmaImmediate() {
     bus.write32(0x040000D4, 0x02000000);               // DMA3 SAD
     bus.write32(0x040000D8, 0x03000000);               // DMA3 DAD
     bus.write32(0x040000DC, 4u | (0xC400u << 16));     // 4 palavras, 32 bits, IRQ, liga
+    bus.flushPendingDma();                             // o DMA imediato começa 2 ciclos depois de ligado
     CHECK(bus.read32(0x03000000) == 0x1000 && bus.read32(0x0300000C) == 0x1003);
     CHECK(bus.read32(0x03000010) == 0);
     CHECK(!(bus.read16(0x040000DE) & 0x8000));         // desligou sozinho
     CHECK(bus.read16(0x04000202) & (gba::irq::Dma0 << 3));
+}
+
+// O DMA imediato só começa 2 ciclos depois de ligado: até lá nada foi copiado. Ciclos que passam (um
+// acesso da CPU, por exemplo) completam a espera e o DMA roda antes do acesso seguinte.
+static void testImmediateDmaStartDelay() {
+    Console c;
+    auto& bus = c.bus();
+    bus.write16(0x02000000, 0xCAFE);
+    bus.write32(0x040000D4, 0x02000000);
+    bus.write32(0x040000D8, 0x03000200);
+    bus.write32(0x040000DC, 1u | (0x8000u << 16));     // 1 halfword, liga
+    CHECK(bus.read16(0x03000200) == 0);                // ainda esperando os 2 ciclos
+    bus.idle(1);
+    CHECK(bus.read16(0x03000200) == 0);                // 1 ciclo: ainda não
+    bus.idle(1);                                       // 2 ciclos: a espera acabou...
+    bus.load16(0x03000000);                            // ...e o DMA roda antes do próximo acesso
+    CHECK(bus.read16(0x03000200) == 0xCAFE);
 }
 
 static void testDmaFill() {
@@ -49,6 +67,7 @@ static void testDmaFill() {
     bus.write32(0x040000B0, 0x02000000);               // DMA0
     bus.write32(0x040000B4, 0x03000100);
     bus.write32(0x040000B8, 8u | (0x8100u << 16));     // origem fixa, 16 bits, liga
+    bus.flushPendingDma();
     CHECK(bus.read16(0x03000100) == 0xBEEF && bus.read16(0x0300010E) == 0xBEEF);
     CHECK(bus.read16(0x03000110) == 0);
 }
@@ -489,6 +508,7 @@ static void testMosaic() {
 int main() {
     testDmaImmediate();
     testDmaFill();
+    testImmediateDmaStartDelay();
     testDmaVBlankRepeat();
     testTextBackground();
     testPriority();

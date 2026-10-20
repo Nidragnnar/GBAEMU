@@ -92,6 +92,7 @@ Bus::Bus() { updateWaitstates(); }
 
 void Bus::resetTiming() {
     cycles_ = 0;
+    dmaCountdown_ = -1;
     nextSequential_ = 0xFFFFFFFF;
     prefetchActive_ = false;
     prefetchCount_ = 0;
@@ -208,14 +209,30 @@ void Bus::advancePrefetch(int cycles) const {
     if (prefetchCount_ >= 8) prefetchProgress_ = 0;
 }
 
+void Bus::fireDma() const {
+    dmaCountdown_ = -1;
+    if (dmaKickHook_) dmaKickHook_();
+}
+
 void Bus::idle(int cycles) const {
     if (cycles <= 0) return;
+    if (dmaCountdown_ == 0) fireDma();
     cycles_ += cycles;
     advancePrefetch(cycles);
     nextSequential_ = 0xFFFFFFFF; // depois de ciclos internos, o próximo acesso é não sequencial
+    countDownDma(cycles);
 }
 
+// Acesso da CPU: se um DMA imediato já deveria ter começado, ele roda antes; depois o acesso é cobrado
+// e o tempo dele é descontado da espera de um DMA recém-ligado.
 void Bus::account(uint32_t addr, int width, bool code) const {
+    if (dmaCountdown_ == 0) fireDma();
+    const int before = cycles_;
+    accountCpu(addr, width, code);
+    countDownDma(cycles_ - before);
+}
+
+void Bus::accountCpu(uint32_t addr, int width, bool code) const {
     const int region = (addr >> 28) ? 0x1 : static_cast<int>((addr >> 24) & 0xF); // >= 0x10000000: 1 ciclo
     const bool rom = region >= 0x8 && region <= 0xD;
     // Sequencial: o endereço seguinte ao do último acesso. No cartucho, cruzar um bloco de 128 KB
@@ -265,6 +282,24 @@ void Bus::account(uint32_t addr, int width, bool code) const {
     prefetchProgress_ = 0;
 }
 
+void Bus::accountDma(uint32_t addr, bool word, bool sequential) const {
+    const int region = (addr >> 28) ? 0x1 : static_cast<int>((addr >> 24) & 0xF);
+    const bool rom = region >= 0x8 && region <= 0xD;
+    if (rom && (addr & 0x1FFFF) == 0) sequential = false; // bloco de 128 KB do cartucho
+    cycles_ += sequential ? (word ? s32_[region] : s16_[region]) : (word ? n32_[region] : n16_[region]);
+}
+
+uint32_t Bus::dmaLoad(uint32_t a, bool word, bool sequential) const {
+    accountDma(a, word, sequential);
+    return word ? read32(a) : read16(a);
+}
+
+void Bus::dmaStore(uint32_t a, uint32_t v, bool word, bool sequential) {
+    accountDma(a, word, sequential);
+    if (word) write32(a, v);
+    else write16(a, static_cast<uint16_t>(v));
+}
+
 void Bus::serializeTiming(StateArchive& ar) {
     ar.value(cycles_);
     ar.value(nextSequential_);
@@ -273,6 +308,10 @@ void Bus::serializeTiming(StateArchive& ar) {
     ar.value(prefetchCount_);
     ar.value(prefetchProgress_);
     if (ar.loading()) updateWaitstates();
+}
+
+void Bus::serializeDmaSchedule(StateArchive& ar) {
+    ar.value(dmaCountdown_);
 }
 
 uint16_t Bus::fetch16(uint32_t addr) const {

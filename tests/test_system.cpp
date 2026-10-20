@@ -539,12 +539,14 @@ static void eepromSend(gba::Gba& g, const std::vector<int>& bits) {
     g.bus().write32(0x040000D4, 0x02010000);
     g.bus().write32(0x040000D8, 0x0D000000);
     g.bus().write32(0x040000DC, static_cast<uint32_t>(bits.size()) | (0x8000u << 16));
+    g.bus().flushPendingDma();
 }
 
 static std::vector<int> eepromReceive(gba::Gba& g) {
     g.bus().write32(0x040000D4, 0x0D000000);
     g.bus().write32(0x040000D8, 0x02011000);
     g.bus().write32(0x040000DC, 68u | (0x8000u << 16));
+    g.bus().flushPendingDma();
     std::vector<int> bits;
     for (uint32_t i = 0; i < 68; ++i) bits.push_back(g.bus().read16(0x02011000 + i * 2) & 1);
     return bits;
@@ -687,8 +689,9 @@ static void testStateVersion1StillLoads() {
     g.bus().serializeTiming(timingOnly);
     // Campos das versões 2 (relógio), 3 (registrador do DMA, 4 bytes) e 4 (tempo do barramento) ficam no
     // fim: tirá-los dá a versão 1.
-    // ...e 5 (atraso de partida dos timers: 4 ints).
-    state.resize(state.size() - rtcOnly.data().size() - 4 - timingOnly.data().size() - 4 * sizeof(int));
+    // ...5 (atraso de partida dos timers: 4 ints) e 6 (espera do DMA imediato: um int e um byte).
+    state.resize(state.size() - rtcOnly.data().size() - 4 - timingOnly.data().size() - 4 * sizeof(int) -
+                 sizeof(int) - 1);
     state[8] = 1; state[9] = state[10] = state[11] = 0;    // ...e marca como versão 1
     bool ok = true;
     try { g.loadState(state); } catch (const std::exception&) { ok = false; }

@@ -15,7 +15,7 @@ constexpr uint32_t kDstMask[4] = {0x07FFFFFF, 0x07FFFFFF, 0x07FFFFFF, 0x0FFFFFFF
 constexpr uint32_t kMaxCount[4] = {0x4000, 0x4000, 0x4000, 0x10000};
 } // namespace
 
-void Dma::reset() { channels_ = {}; latch_ = 0; }
+void Dma::reset() { channels_ = {}; latch_ = 0; pending_ = 0; }
 
 void Dma::latch(int n, bool reloadAll) {
     Channel& ch = channels_[n];
@@ -39,7 +39,18 @@ void Dma::onIoWrite(uint32_t offset) {
     if (!ch.enabled || wasEnabled) return;
 
     latch(n, true); // ligou agora: trava origem, destino e quantidade
-    if (static_cast<Timing>((cnt >> 12) & 3) == Timing::Immediate) transfer(n);
+    if (static_cast<Timing>((cnt >> 12) & 3) == Timing::Immediate) {
+        pending_ |= static_cast<uint8_t>(1u << n); // começa 2 ciclos depois; até lá a CPU continua
+        bus_.scheduleDma(2);
+    }
+}
+
+void Dma::runPending() {
+    for (int n = 0; n < 4; ++n) { // canal de número menor primeiro
+        if (!(pending_ & (1u << n))) continue;
+        pending_ = static_cast<uint8_t>(pending_ & ~(1u << n));
+        if (channels_[n].enabled) transfer(n);
+    }
 }
 
 void Dma::trigger(Timing timing) {
@@ -58,10 +69,13 @@ void Dma::soundRequest(int fifo) {
         if (!ch.enabled || static_cast<Timing>((cnt >> 12) & 3) != Timing::Special || (ch.dst & ~3u) != fifoAddr) continue;
         const uint32_t srcControl = (cnt >> 7) & 3;
         const uint32_t srcStep = srcControl == 1 ? 0u - 4u : srcControl == 2 ? 0u : 4u;
+        bus_.dmaIdle(2); // preparação do DMA
         for (int i = 0; i < 4; ++i) {
-            transferUnit(ch.src, fifoAddr, true);
+            transferUnit(ch.src, fifoAddr, true, i > 0);
             ch.src += srcStep;
         }
+        bus_.dmaFinished();
+
         if (cnt & kIrq) bus_.requestInterrupt(static_cast<uint16_t>(irq::Dma0 << n));
         if (!(cnt & kRepeat)) {
             ch.enabled = false;
@@ -74,17 +88,17 @@ void Dma::soundRequest(int fifo) {
 // Uma unidade de transferência. O DMA tem um registrador interno de passagem: cada valor lido fica nele.
 // Se a origem é uma região que o DMA não consegue ler (a BIOS, ou o cartucho para o canal 0, cujo endereço
 // cai na BIOS pela máscara), o que vai para o destino é o valor que ficou nesse registrador.
-void Dma::transferUnit(uint32_t src, uint32_t dst, bool word) {
+void Dma::transferUnit(uint32_t src, uint32_t dst, bool word, bool sequential) {
     const bool readable = src >= 0x02000000;
     if (word) {
-        if (readable) latch_ = bus_.load32(src & ~3u);
-        bus_.store32(dst & ~3u, latch_);
+        if (readable) latch_ = bus_.dmaLoad(src & ~3u, true, sequential);
+        bus_.dmaStore(dst & ~3u, latch_, true, sequential);
     } else {
         if (readable) {
-            const uint32_t v = bus_.load16(src & ~1u);
+            const uint32_t v = bus_.dmaLoad(src & ~1u, false, sequential);
             latch_ = v | (v << 16); // a halfword aparece nas duas metades
         }
-        bus_.store16(dst & ~1u, static_cast<uint16_t>(latch_ >> ((dst & 2) * 8)));
+        bus_.dmaStore(dst & ~1u, latch_ >> ((dst & 2) * 8), false, sequential);
     }
 }
 
@@ -98,7 +112,7 @@ void Dma::transfer(int n) {
     const auto step = [unit](uint32_t control) -> uint32_t {
         return control == 1 ? 0u - unit : control == 2 ? 0u : unit;
     };
-    bus_.idle(2); // o DMA leva 2 ciclos internos para começar a transferência
+    bus_.dmaIdle(2); // o DMA leva 2 ciclos internos para começar a transferência
     // Lendo do cartucho (ROM), a origem sempre avança: o cartucho tem um contador de endereço próprio que
     // incrementa a cada leitura sequencial, então "fixo" e "decrementando" não têm efeito ali.
     const bool fromRom = (ch.src >> 24) >= 0x08 && (ch.src >> 24) <= 0x0D;
@@ -107,11 +121,11 @@ void Dma::transfer(int n) {
 
     if ((ch.dst >> 24) == 0x0D || (ch.src >> 24) == 0x0D) bus_.backup().eepromDmaHint(ch.count);
     for (uint32_t i = 0; i < ch.count; ++i) {
-        transferUnit(ch.src, ch.dst, word);
+        transferUnit(ch.src, ch.dst, word, i > 0); // a primeira unidade é não sequencial
         ch.src += srcStep;
         ch.dst += dstStep;
     }
-    // TODO: a CPU fica parada durante o DMA (2 ciclos por unidade + waitstates); ainda não contabilizado.
+    bus_.dmaFinished(); // a CPU, que ficou parada durante o DMA, retoma com um acesso não sequencial
 
     if (cnt & kIrq) bus_.requestInterrupt(static_cast<uint16_t>(irq::Dma0 << n));
 
