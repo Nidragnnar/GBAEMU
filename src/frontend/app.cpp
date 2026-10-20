@@ -217,6 +217,7 @@ bool App::runOneFrame(bool keepAudio) {
     }
     ++frame_;
     if (frame_ % 300 == 0) saveBackupNow(); // ~5 s: protege contra fechamento inesperado
+    if (frame_ % kRewindInterval == 0) rewind_.push(console_->saveState()); // histórico do "voltar no tempo"
     auto samples = console_->apu().takeSamples();
     if (audio_ && keepAudio && !config_.mute && !samples.empty()) {
         if (config_.volume < 100) {
@@ -241,7 +242,20 @@ void App::runEmulation() {
 
     const bool wantAudio = audio_ && !config_.mute;
     int ran = 0;
-    if (fastForward_) {
+    if (rewinding_) {
+        // Voltando no tempo: a cada 3 quadros de tela, a foto anterior (cada uma vale 10 quadros, então
+        // o jogo volta a ~3x a velocidade). Sem som; sem fotos, fica parado na mais antiga.
+        while (ran < 4 && timeDebt_ >= kFrameSeconds) {
+            timeDebt_ -= kFrameSeconds;
+            ++ran;
+            if (++rewindTimer_ % 3 != 0) continue;
+            if (auto state = rewind_.pop()) {
+                console_->loadState(*state);
+                console_->apu().takeSamples(); // descarta o som acumulado
+                frame_ = frame_ >= kRewindInterval ? frame_ - kRewindInterval : 0;
+            }
+        }
+    } else if (fastForward_) {
         for (; ran < 6 && !stopped_; ++ran) runOneFrame(false); // acelerado: sem som
         timeDebt_ = 0;
     } else if (wantAudio) {
@@ -283,6 +297,21 @@ uint16_t App::readKeys() const {
 }
 
 // Gatilho direito (RT/R2) acelera, como o Tab.
+// Voltar no tempo: segurar R (se o R não estiver mapeado para um botão do GBA) ou o gatilho esquerdo.
+bool App::rewindHeld() const {
+    if (capture_ != Capture::None) return false;
+    const bool rUsed = std::find(config_.keys.begin(), config_.keys.end(), static_cast<int>(SDL_SCANCODE_R)) != config_.keys.end();
+    if (!rUsed && !ImGui::GetIO().WantCaptureKeyboard) {
+        const Uint8* state = SDL_GetKeyboardState(nullptr);
+        const bool ctrl = state[SDL_SCANCODE_LCTRL] || state[SDL_SCANCODE_RCTRL]; // Ctrl+R é reiniciar
+        if (state[SDL_SCANCODE_R] && !ctrl) return true;
+    }
+    for (SDL_GameController* pad : pads_) {
+        if (SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERLEFT) > 16000) return true;
+    }
+    return false;
+}
+
 bool App::padFastForward() const {
     for (SDL_GameController* pad : pads_) {
         if (SDL_GameControllerGetAxis(pad, SDL_CONTROLLER_AXIS_TRIGGERRIGHT) > 16000) return true;
@@ -291,7 +320,10 @@ bool App::padFastForward() const {
 }
 
 void App::render() {
-    fastForward_ = capture_ == Capture::None &&
+    const bool wasRewinding = rewinding_;
+    rewinding_ = console_ && !stopped_ && !paused_ && rewindHeld();
+    if (rewinding_ && !wasRewinding && audio_) SDL_ClearQueuedAudio(audio_);
+    fastForward_ = !rewinding_ && capture_ == Capture::None &&
                    ((!ImGui::GetIO().WantCaptureKeyboard && SDL_GetKeyboardState(nullptr)[SDL_SCANCODE_TAB] != 0) ||
                     padFastForward());
 
@@ -409,6 +441,7 @@ void App::openRom(const std::string& path, std::string patchPath, bool usePatch)
     std::fflush(stdout);
 
     console_ = std::move(console);
+    rewind_.clear();
     romPath_ = path;
     gameTitle_ = header.title.empty() ? gba::pathToUtf8(gba::utf8Path(path).stem()) : header.title;
     paused_ = options_.testPattern; // com o padrão de teste, a CPU não roda
@@ -468,6 +501,7 @@ void App::resetConsole() {
     if (!console_) return;
     saveBackupNow();
     console_->reset();
+    rewind_.clear();
     stopped_ = false;
     paused_ = false;
     if (audio_) SDL_ClearQueuedAudio(audio_);
@@ -509,6 +543,7 @@ void App::loadStateSlot(int slot) {
     if (!stateExists(slot)) { toast("O slot " + std::to_string(slot) + " está vazio"); return; }
     try {
         console_->loadState(gba::readFile(statePath(slot)));
+        rewind_.clear(); // não volta para antes do estado carregado
         stopped_ = false;
         if (audio_) SDL_ClearQueuedAudio(audio_);
         toast("Estado do slot " + std::to_string(slot) + " carregado");

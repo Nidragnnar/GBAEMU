@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include "core/rewind.hpp"
 #include "core/gba.hpp"
 #include "frontend/config.hpp"
 
@@ -60,6 +61,7 @@ private:
     bool stateExists(int slot) const;
     uint16_t readKeys() const;
     bool padFastForward() const;
+    bool rewindHeld() const;
     void openPad(int deviceIndex);
     void closePad(int32_t instanceId);
     std::string padName() const;
@@ -132,6 +134,12 @@ private:
     SDL_Texture* spriteTexture_ = nullptr;
 
     std::string patchName_; // patch aplicado ao jogo aberto (vazio se nenhum)
+
+    // Voltar no tempo: uma foto a cada kRewindInterval quadros, 120 fotos = ~20 s de histórico.
+    static constexpr uint64_t kRewindInterval = 10;
+    gba::RewindBuffer rewind_{120};
+    bool rewinding_ = false;
+    int rewindTimer_ = 0;
 
     std::string toast_;
     double toastUntil_ = 0;

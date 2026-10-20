@@ -162,6 +162,9 @@ void App::drawMenuBar() {
             ImGui::Separator();
         }
         if (ImGui::MenuItem(paused_ ? "Continuar" : "Pausar", "Esc")) togglePause();
+        ImGui::MenuItem("Voltar no tempo", "segure R", false, false); // só informa o atalho
+        ImGui::TextDisabled("  Histórico: %.0f s, %.1f MB", static_cast<double>(rewind_.size() * kRewindInterval) / 60.0,
+                            static_cast<double>(rewind_.memoryUsed()) / (1024.0 * 1024.0));
         if (ImGui::MenuItem("Reiniciar", "Ctrl+R")) resetConsole();
         ImGui::Separator();
         const std::string slotLabel = " (slot " + std::to_string(config_.stateSlot) + ")";
@@ -309,6 +312,17 @@ void App::drawOverlays() {
         drawHeart(fg, c.x - ts.x / 2 - 8, c.y - 3, 12, IM_COL32(240, 140, 190, 255));
     }
 
+    // Voltando no tempo: uma pílula no topo com os segundos de histórico que ainda restam.
+    if (rewinding_) {
+        char text[64];
+        std::snprintf(text, sizeof text, "<<  Voltando no tempo  (%.0f s)", static_cast<double>(rewind_.size() * kRewindInterval) / 60.0);
+        const ImVec2 ts = ImGui::CalcTextSize(text);
+        const ImVec2 c(vp->WorkPos.x + vp->WorkSize.x * 0.5f, vp->WorkPos.y + 30);
+        fg->AddRectFilled(ImVec2(c.x - ts.x / 2 - 18, c.y - ts.y / 2 - 9), ImVec2(c.x + ts.x / 2 + 18, c.y + ts.y / 2 + 9),
+                          IM_COL32(236, 228, 252, 235), 999.0f);
+        fg->AddText(ImVec2(c.x - ts.x / 2, c.y - ts.y / 2), ImGui::GetColorU32(kPlum), text);
+    }
+
     // Aviso temporário (save state, erros): canto inferior esquerdo, sumindo devagar.
     const double now = ImGui::GetTime();
     if (!toast_.empty() && now < toastUntil_) {
@@ -375,6 +389,7 @@ void App::drawControlsWindow() {
                 for (int i = 0; i < 10; ++i) drawBindingRow(i, true);
                 ImGui::Spacing();
                 ImGui::TextDisabled("Analógico esquerdo: direcional  |  Gatilho direito: acelerar");
+                ImGui::TextDisabled("Gatilho esquerdo: voltar no tempo");
                 if (ImGui::Button("Restaurar o padrão##controle")) { config_.padButtons = Config::defaultPadButtons(); config_.save(configPath_); }
                 ImGui::EndTabItem();
             }
@@ -387,6 +402,7 @@ void App::drawControlsWindow() {
                 ImGui::BulletText("F11             tela cheia");
                 ImGui::BulletText("F10             avançar 1 quadro (pausa)");
                 ImGui::BulletText("F12             capturar a tela (PNG)");
+                ImGui::BulletText("R (segurar)     voltar no tempo (até ~20 s)");
                 ImGui::BulletText("F1 / F2         diagnóstico no terminal");
                 ImGui::EndTabItem();
             }

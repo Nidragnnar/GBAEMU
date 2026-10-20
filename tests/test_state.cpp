@@ -4,6 +4,7 @@
 #include <vector>
 
 #include "core/gba.hpp"
+#include "core/rewind.hpp"
 
 static int failures = 0;
 #define CHECK(cond) do { if (!(cond)) { std::printf("FALHOU %s:%d  %s\n", __FILE__, __LINE__, #cond); ++failures; } } while (0)
@@ -122,9 +123,72 @@ static void testRejectsOtherGameAndCorruption() {
     CHECK(threw);
 }
 
+// ------------------------------------------------------------------ voltar no tempo (rewind)
+
+static void testXorDiffRoundTrip() {
+    std::vector<uint8_t> a(5000), b(5000);
+    for (size_t i = 0; i < a.size(); ++i) a[i] = b[i] = static_cast<uint8_t>(i * 7);
+    b[0] ^= 1; b[100] = 0xFF; b[101] = 0x00; b[4999] ^= 0x80;     // poucas diferenças, inclusive nas pontas
+    for (size_t i = 2000; i < 2300; ++i) b[i] = static_cast<uint8_t>(~b[i]); // e um trecho inteiro diferente
+    const auto diff = gba::compressXorDiff(a, b);
+    CHECK(diff.size() < 400);                                   // bem menor que os 5000 bytes
+    std::vector<uint8_t> back = b;
+    gba::applyXorDiff(back, diff);
+    CHECK(back == a);
+    CHECK(gba::compressXorDiff(a, a).size() < 8);               // iguais: quase nada
+    std::vector<uint8_t> other(10, 1);                          // tamanhos diferentes: guarda inteiro
+    std::vector<uint8_t> t = a;
+    gba::applyXorDiff(t, gba::compressXorDiff(other, a));
+    CHECK(t == other);
+}
+
+static void testRewindBufferOrderAndCapacity() {
+    gba::RewindBuffer buf(3);
+    for (uint8_t i = 1; i <= 5; ++i) buf.push(std::vector<uint8_t>(64, i));
+    CHECK(buf.size() == 3);
+    for (uint8_t expected : {5, 4, 3}) {                        // do mais recente para o mais antigo
+        auto s = buf.pop();
+        CHECK(s && s->size() == 64 && (*s)[0] == expected && (*s)[63] == expected);
+    }
+    CHECK(!buf.pop());                                          // os dois mais antigos foram descartados
+    buf.push({9});
+    buf.clear();
+    CHECK(buf.size() == 0 && !buf.pop());
+}
+
+// Com o console de verdade: guarda uma foto a cada 10 quadros e confere que a volta reconstrói cada
+// estado exatamente, e que carregar a foto devolve o console àquele momento.
+static void testRewindWithConsole() {
+    gba::Gba g;
+    g.loadRom(testRom());
+    g.reset();
+    gba::RewindBuffer buf(20);
+    std::vector<std::vector<uint8_t>> expected;
+    for (int i = 0; i < 12; ++i) {
+        for (int f = 0; f < 10; ++f) g.runFrame();
+        expected.push_back(g.saveState());
+        buf.push(expected.back());
+    }
+    CHECK(buf.memoryUsed() < expected[0].size() * 2);          // 12 fotos em menos que o espaço de 2
+    for (int i = 11; i >= 0; --i) {
+        auto s = buf.pop();
+        CHECK(s && *s == expected[static_cast<size_t>(i)]);
+    }
+    g.loadState(expected[3]);                                   // voltar para a 4ª foto...
+    g.runFrame();
+    gba::Gba fresh;                                             // ...e seguir dali dá o mesmo que um console
+    fresh.loadRom(testRom());                                   // que nunca saiu desse caminho
+    fresh.loadState(expected[3]);
+    fresh.runFrame();
+    CHECK(g.saveState() == fresh.saveState());
+}
+
 int main() {
     testRoundTrip();
     testRejectsOtherGameAndCorruption();
+    testXorDiffRoundTrip();
+    testRewindBufferOrderAndCapacity();
+    testRewindWithConsole();
     if (failures == 0) std::printf("Save states: todos os testes passaram.\n");
     return failures == 0 ? 0 : 1;
 }

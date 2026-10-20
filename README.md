@@ -20,6 +20,7 @@ Emulador de Game Boy Advance em C++20, escrito do zero usando o GBATEK como espe
 - [x] Tratador de IRQ da BIOS (HLE) e teclado
 - [x] DMA: 4 canais, imediato, VBlank e HBlank, repetição e recarga
 - [x] PPU linha a linha: modos 0-5, backgrounds de tiles (16/256 cores, espelhamento, rolagem, prioridade), afins e bitmap
+- [x] Voltar no tempo (segurar R ou o gatilho esquerdo): ~20 s de histórico, uma foto a cada 10 quadros, guardadas como diferenças comprimidas (poucos MB)
 - [x] Captura de tela (F12): PNG em 240×160 numa pasta `Capturas` ao lado da ROM
 - [x] Patches de tradução e hacks (soft-patching IPS, UPS e BPS): `Jogo.gba` + `Jogo.ups` na mesma pasta e o patch é aplicado na memória, sem alterar a ROM; UPS e BPS conferem o CRC32 e avisam se a ROM for de outra versão
 - [x] Temporização realista: custo de cada acesso por região (WAITCNT, sequencial ou não), buffer de prefetch do cartucho, ciclos internos da CPU, DMA gastando tempo da CPU e timers precisos no meio das instruções e DMA com tempo próprio (sequência de origem e destino, 2 ciclos de partida) (suíte do mGBA: Timing 1784/2020)
