@@ -28,6 +28,7 @@ add_library(gba_core
   src/core/analysis.cpp
   src/core/apu.cpp
   src/core/rtc.cpp
+  src/core/patch.cpp
   src/core/ppu.cpp)
 target_include_directories(gba_core PUBLIC src)
 if(MSVC)
@@ -78,6 +79,13 @@ if(MSVC)
   target_compile_options(gba_state_tests PRIVATE /utf-8)
 endif()
 add_test(NAME state COMMAND gba_state_tests)
+
+add_executable(gba_patch_tests tests/test_patch.cpp)
+target_link_libraries(gba_patch_tests PRIVATE gba_core)
+if(MSVC)
+  target_compile_options(gba_patch_tests PRIVATE /utf-8)
+endif()
+add_test(NAME patch COMMAND gba_patch_tests)
 
 # ROMs de teste do jsmolka (opcionais: baixadas pelo GitHub Actions; puladas se ausentes)
 add_executable(gba_rom_tests tests/test_roms.cpp)

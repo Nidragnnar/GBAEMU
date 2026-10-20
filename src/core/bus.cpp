@@ -249,9 +249,41 @@ uint8_t Bus::readRaw8(uint32_t addr) const {
 
 // GBATEK, "GBA Unpredictable Things": registradores só-escrita ou inexistentes leem 0 quando a
 // palavra de 32 bits tem alguma parte legível, e "open bus" quando a palavra inteira não tem.
+// Registradores do cabo de link (SIO), cuja leitura depende do modo do cabo. Sem cabo conectado, os dados
+// "recebidos" leem 0 e os bits de status ficam no estado de repouso. Valores conferidos pela suíte do mGBA.
+uint16_t Bus::sioRead16(uint32_t halfOffset) const {
+    const auto raw = [this](uint32_t o) { return static_cast<uint16_t>(io_[o] | (io_[o + 1] << 8)); };
+    const uint16_t rcnt = raw(0x134), siocnt = raw(0x128);
+    enum class Mode { Normal8, Normal32, Multi, Uart, Gpio, Joy };
+    const Mode mode = (rcnt & 0x8000) ? ((rcnt & 0x4000) ? Mode::Joy : Mode::Gpio)
+                                      : static_cast<Mode>((siocnt >> 12) & 3); // 0/1/2/3 = 8 bits, 32 bits, multi, UART
+    const bool normal = mode == Mode::Normal8 || mode == Mode::Normal32;
+    const uint16_t v = raw(halfOffset);
+    switch (halfOffset) {
+    case 0x120: case 0x122: return mode == Mode::Normal32 ? v : 0; // SIODATA32: só no modo de 32 bits
+    case 0x124: case 0x126: return 0;                              // SIOMULTI2/3: dados recebidos
+    case 0x128:                                                    // SIOCNT
+        if (mode == Mode::Multi) return static_cast<uint16_t>((v & 0x4F83) | (v & 0x3000) | 0x000C); // SI/SD em 1
+        if (mode == Mode::Uart) return static_cast<uint16_t>((v & 0x4F8F) | 0x3000 | 0x0020);       // recepção vazia
+        return static_cast<uint16_t>((v & 0x4F8B) | (v & 0x3000) | 0x0004);                         // SI em 1
+    case 0x12A: return mode == Mode::Uart ? 0 : v;                 // SIODATA8 / SIOMLT_SEND
+    case 0x134:                                                    // RCNT: bits 9-13 não existem
+        if (normal) return static_cast<uint16_t>(v & 0xC1F5);
+        if (mode == Mode::Joy) return static_cast<uint16_t>(v & 0xC1FC);
+        return static_cast<uint16_t>(v & 0xC1FF);
+    case 0x140: return static_cast<uint16_t>(v & 0x0040);          // JOYCNT: bits 0-2 são "escreva 1 para limpar"
+    case 0x150: case 0x152: case 0x154: case 0x156: return 0;      // JOY_RECV / JOY_TRANS
+    default: return v;
+    }
+}
+
 uint8_t Bus::readIo(uint32_t offset) const {
     if (offset == 0x130) return static_cast<uint8_t>(keyInput_);       // KEYINPUT vem do teclado,
     if (offset == 0x131) return static_cast<uint8_t>(keyInput_ >> 8);  // não da memória de I/O
+    if ((offset >= 0x120 && offset < 0x12C) || offset == 0x134 || offset == 0x135 || (offset >= 0x140 && offset < 0x142) ||
+        (offset >= 0x150 && offset < 0x158)) {
+        return static_cast<uint8_t>(sioRead16(offset & ~1u) >> ((offset & 1) * 8));
+    }
     if (isReadableIo(offset)) {
         const uint16_t mask = ioReadMask(offset & ~1u);
         return static_cast<uint8_t>(io_[offset] & ((offset & 1) ? (mask >> 8) : mask));

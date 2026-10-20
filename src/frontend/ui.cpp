@@ -155,6 +155,11 @@ void App::drawMenuBar() {
     }
 
     if (ImGui::BeginMenu("Emulação", console_ != nullptr)) {
+        if (!patchName_.empty()) {
+            ImGui::TextColored(kPinkDeep, "Patch: %s", patchName_.c_str());
+            if (ImGui::MenuItem("Reabrir sem o patch")) openRom(romPath_, "", false);
+            ImGui::Separator();
+        }
         if (ImGui::MenuItem(paused_ ? "Continuar" : "Pausar", "Esc")) togglePause();
         if (ImGui::MenuItem("Reiniciar", "Ctrl+R")) resetConsole();
         ImGui::Separator();

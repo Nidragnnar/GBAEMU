@@ -42,7 +42,10 @@ private:
     void render();
 
     // ---- ações
-    void openRom(const std::string& path);
+    // patchPath vazio: procura um patch ao lado da ROM. usePatch = false: abre a ROM pura.
+    void openRom(const std::string& path, std::string patchPath = "", bool usePatch = true);
+    std::string findPatchFor(const std::string& romPath) const;
+    static bool isPatchFile(const std::string& path);
     void closeRom();
     void resetConsole();
     void togglePause() { if (console_) paused_ = !paused_; }
@@ -126,6 +129,8 @@ private:
     int vramPaletteBank_ = 0;
     SDL_Texture* vramTexture_ = nullptr;
     SDL_Texture* spriteTexture_ = nullptr;
+
+    std::string patchName_; // patch aplicado ao jogo aberto (vazio se nenhum)
 
     std::string toast_;
     double toastUntil_ = 0;

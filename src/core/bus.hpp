@@ -144,6 +144,7 @@ private:
     mutable uint32_t                lastFetch_ = 0;           // "open bus": o que acabou de passar pelo barramento
     uint8_t openBus(uint32_t addr) const { return static_cast<uint8_t>(lastFetch_ >> ((addr & 3) * 8)); }
     uint8_t readIo(uint32_t offset) const;
+    uint16_t sioRead16(uint32_t halfOffset) const;
     mutable std::vector<Probe>      probes_;
     void probeRead(uint32_t addr, uint8_t value) const;
     uint8_t readRaw8(uint32_t addr) const;

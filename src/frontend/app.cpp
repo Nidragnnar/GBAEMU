@@ -5,10 +5,12 @@
 #include <imgui_impl_sdlrenderer2.h>
 
 #include <algorithm>
+#include <cctype>
 #include <cstdio>
 #include <filesystem>
 
 #include "core/cartridge.hpp"
+#include "core/patch.hpp"
 #include "frontend/diagnostics.hpp"
 #include "frontend/file_dialog.hpp"
 
@@ -173,7 +175,12 @@ void App::handleEvent(const SDL_Event& ev) {
     if (ev.type == SDL_DROPFILE) { // ROM arrastada para a janela
         const std::string path = ev.drop.file;
         SDL_free(ev.drop.file);
-        openRom(path);
+        if (isPatchFile(path)) { // patch arrastado com um jogo aberto: reabre o jogo com ele
+            if (romPath_.empty()) toast("Abra o jogo primeiro e depois arraste o patch");
+            else openRom(romPath_, path);
+        } else {
+            openRom(path);
+        }
         return;
     }
     if (ev.type != SDL_KEYDOWN || ev.key.repeat) return;
@@ -319,11 +326,49 @@ void App::render() {
 
 // ---------------------------------------------------------------- ações
 
-void App::openRom(const std::string& path) {
+// Patch ao lado da ROM, com o mesmo nome: Jogo.gba + Jogo.bps / Jogo.ups / Jogo.ips. Vazio se não houver.
+std::string App::findPatchFor(const std::string& romPath) const {
+    for (const char* ext : {".bps", ".ups", ".ips"}) {
+        const auto candidate = gba::utf8Path(romPath).replace_extension(ext);
+        if (std::filesystem::exists(candidate)) return gba::pathToUtf8(candidate);
+    }
+    return "";
+}
+
+bool App::isPatchFile(const std::string& path) {
+    std::string ext = gba::pathToUtf8(gba::utf8Path(path).extension());
+    for (char& c : ext) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
+    return ext == ".ips" || ext == ".ups" || ext == ".bps";
+}
+
+void App::openRom(const std::string& path, std::string patchPath, bool usePatch) {
     std::vector<uint8_t> rom;
     gba::CartridgeHeader header;
     try {
         rom = gba::readFile(path);
+    } catch (const std::exception& e) {
+        toast(std::string("Não deu para abrir: ") + e.what());
+        return;
+    }
+
+    // Soft-patching: o patch é aplicado na memória; o arquivo da ROM nunca é alterado.
+    if (!usePatch) patchPath.clear();
+    else if (patchPath.empty()) patchPath = findPatchFor(path);
+    patchName_.clear();
+    if (!patchPath.empty()) {
+        const std::string name = gba::pathToUtf8(gba::utf8Path(patchPath).filename());
+        try {
+            const auto patch = gba::readFile(patchPath);
+            const auto format = gba::detectPatchFormat(patch);
+            rom = gba::applyPatch(rom, patch);
+            patchName_ = name;
+            toast(std::string("Patch aplicado: ") + name + " (" + gba::patchFormatName(format) + ")");
+        } catch (const std::exception& e) {
+            toast("Patch " + name + " não aplicado: " + e.what());
+        }
+    }
+
+    try {
         header = gba::parseHeader(rom);
     } catch (const std::exception& e) {
         toast(std::string("Não deu para abrir: ") + e.what());
@@ -354,8 +399,8 @@ void App::openRom(const std::string& path) {
         }
     }
 
-    std::printf("Título: %s | Código: %s | Save: %s\n", header.title.c_str(), header.gameCode.c_str(),
-                gba::Backup::name(backup.type()));
+    std::printf("Título: %s | Código: %s | Save: %s%s%s\n", header.title.c_str(), header.gameCode.c_str(),
+                gba::Backup::name(backup.type()), patchName_.empty() ? "" : " | Patch: ", patchName_.c_str());
     for (const auto& [addr, len] : options_.dumps) diag::dumpMemory(*console, addr, len);
     if (options_.testPattern) diag::writeTestPattern(console->bus());
     std::fflush(stdout);

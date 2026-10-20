@@ -63,6 +63,7 @@ const SuiteCase kSuite[] = {
     {0, "Memory", 0xE23FF7ECE4B5B0FAull},   {1, "I/O read", 0x64A29E0DB3647E96ull},
     {5, "Shifter", 0x4AE6B3C4F8314D1Eull},  {6, "Carry", 0xEA4F1BA8A09E1710ull},
     {8, "BIOS math", 0x993B9C33D4127E74ull}, {9, "DMA", 0x4DFFEDFE02D3BAD4ull},
+    {10, "SIO regs", 0xE1E7A837EA77D779ull},
 };
 
 } // namespace

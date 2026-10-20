@@ -23,6 +23,14 @@ CONTROLES (todos podem ser trocados em Ajuda > Controles)
   Controles de Xbox, PlayStation e genéricos funcionam: é só conectar.
   O gatilho direito acelera.
 
+TRADUÇÕES E PATCHES
+  Para jogar uma tradução (ou outro hack distribuído como patch .ips, .ups
+  ou .bps), coloque o patch na mesma pasta da ROM, com o mesmo nome:
+      Pokemon FireRed.gba
+      Pokemon FireRed.ups
+  O NiGBA aplica o patch sozinho ao abrir o jogo, sem modificar a ROM.
+  Se o patch for de outra versão da ROM, o NiGBA avisa na tela.
+
 ONDE FICAM OS SAVES
   O save do jogo (.sav) e os save states (.ss1 a .ss4) ficam na mesma pasta
   da ROM, com o mesmo nome dela.

@@ -20,6 +20,7 @@ Emulador de Game Boy Advance em C++20, escrito do zero usando o GBATEK como espe
 - [x] Tratador de IRQ da BIOS (HLE) e teclado
 - [x] DMA: 4 canais, imediato, VBlank e HBlank, repetição e recarga
 - [x] PPU linha a linha: modos 0-5, backgrounds de tiles (16/256 cores, espelhamento, rolagem, prioridade), afins e bitmap
+- [x] Patches de tradução e hacks (soft-patching IPS, UPS e BPS): `Jogo.gba` + `Jogo.ups` na mesma pasta e o patch é aplicado na memória, sem alterar a ROM; UPS e BPS conferem o CRC32 e avisam se a ROM for de outra versão
 - [x] Relógio do cartucho (RTC Seiko S-3511, porta GPIO) com a hora do computador: Pokémon Ruby/Sapphire/Emerald e derivados, Boktai
 - [x] Save: detecção automática, SRAM, Flash 64/128 KB e EEPROM 512 bytes/8 KB, arquivo .sav com gravação segura e automática
 - [x] Sprites: normais e afins (rotação/zoom, tamanho duplo), 12 tamanhos, 16/256 cores, espelhamento, mapeamento 1D/2D, prioridade com backgrounds e entre sprites, limite de ciclos por linha
@@ -31,7 +32,7 @@ Emulador de Game Boy Advance em C++20, escrito do zero usando o GBATEK como espe
 - [x] Interface com Dear ImGui: menus, abrir ROM (diálogo, arrastar e soltar, recentes), pausar, reiniciar, escala, tela cheia, volume, tema pastel
 - [x] Configuração de teclas e controle (gamepad): remapeamento na janela Controles, analógico como direcional, gatilho direito acelera
 - [x] Janelas de depuração: CPU (registradores, flags, rastro, avançar quadro), memória (hexadecimal), VRAM (tiles), paletas, sprites (OAM com miniaturas) e registradores de I/O
-- [x] Passa nas ROMs de teste do jsmolka (arm, thumb, memory, nes, unsafe, saves, ppu) e, na suíte do mGBA, 100% em Memory, I/O read, DMA, BIOS math, Shifter e Carry; o CI baixa e roda tudo isso a cada push
+- [x] Passa nas ROMs de teste do jsmolka (arm, thumb, memory, nes, unsafe, saves, ppu) e, na suíte do mGBA, 100% em Memory, I/O read, DMA, BIOS math, SIO registers, Shifter e Carry; o CI baixa e roda tudo isso a cada push
 - [x] GitHub Actions: compila e testa no Windows, Linux e macOS a cada push; publica a Release ao enviar uma tag de versão
 - [x] Pacote para distribuir: um único NiGBA.exe, sem DLLs e sem terminal (`empacotar.bat`)
 
@@ -80,6 +81,10 @@ git push origin v1.2
 ```
 
 O GitHub Actions roda os testes, gera o pacote do Windows e cria a Release com o `NiGBA-windows.zip` anexado. Depois, é só editar o texto da Release no site, se quiser.
+
+## Traduções e outros patches
+
+Coloque o patch na mesma pasta da ROM, com o mesmo nome: `Pokemon FireRed.gba` + `Pokemon FireRed.ups`. Ao abrir o jogo, o NiGBA procura `.bps`, `.ups` e `.ips` (nessa ordem) e aplica o patch na memória; o arquivo da ROM nunca é alterado. Também dá para arrastar um patch para a janela com o jogo aberto. Em **Emulação → Reabrir sem o patch**, o jogo volta ao original. Patches UPS e BPS guardam o CRC32 da ROM esperada: se a ROM for de outra versão (por exemplo, 1.0 em vez de 1.1), o NiGBA avisa e abre o jogo sem o patch.
 
 ## Save e save states
 
