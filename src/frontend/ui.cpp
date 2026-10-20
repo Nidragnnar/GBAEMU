@@ -126,6 +126,59 @@ void App::drawUi() {
     if (showControls_) drawControlsWindow();
     if (showAbout_) drawAboutWindow();
     drawDebugWindows();
+    if (showCheats_ && console_) drawCheatsWindow();
+}
+
+void App::drawCheatsWindow() {
+    ImGui::SetNextWindowSize(ImVec2(480, 460), ImGuiCond_FirstUseEver);
+    if (!ImGui::Begin("Cheats", &showCheats_)) { ImGui::End(); return; }
+
+    if (cheats_.empty()) ImGui::TextDisabled("Nenhum cheat para este jogo ainda.");
+    int removeIndex = -1;
+    for (size_t i = 0; i < cheats_.size(); ++i) {
+        auto& c = cheats_[i];
+        ImGui::PushID(static_cast<int>(i));
+        if (c.ops.empty()) ImGui::BeginDisabled(); // código inválido no arquivo: não dá para ligar
+        if (ImGui::Checkbox(c.name.c_str(), &c.enabled)) saveCheats();
+        if (c.ops.empty()) ImGui::EndDisabled();
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s\n\n%s", gba::cheatFormatName(c.format), c.code.c_str());
+        ImGui::SameLine(ImGui::GetWindowWidth() - 90);
+        if (ImGui::SmallButton("Remover")) removeIndex = static_cast<int>(i);
+        ImGui::PopID();
+    }
+    if (removeIndex >= 0) {
+        cheats_.erase(cheats_.begin() + removeIndex);
+        saveCheats();
+    }
+
+    ImGui::Separator();
+    ImGui::TextColored(kPinkDeep, "Novo cheat");
+    ImGui::InputText("Nome", cheatName_.data(), cheatName_.size());
+    ImGui::TextDisabled("Código (uma linha por instrução):");
+    ImGui::InputTextMultiline("##codigo", cheatCode_.data(), cheatCode_.size(), ImVec2(-1, 110));
+    ImGui::Combo("Formato", &cheatFormat_, "Automático\0Raw (VBA)\0CodeBreaker\0GameShark v1/v2\0");
+    if (ImGui::Button("Adicionar")) {
+        gba::Cheat c;
+        c.name = cheatName_[0] ? cheatName_.data() : "Cheat " + std::to_string(cheats_.size() + 1);
+        c.code = cheatCode_.data();
+        c.format = static_cast<gba::CheatFormat>(cheatFormat_);
+        try {
+            c.ops = gba::parseCheat(c.code, c.format);
+            if (c.format == gba::CheatFormat::Auto) c.format = gba::detectCheatFormat(c.code);
+            cheats_.push_back(std::move(c));
+            saveCheats();
+            cheatName_.fill(0);
+            cheatCode_.fill(0);
+            cheatError_.clear();
+        } catch (const gba::CheatError& e) {
+            cheatError_ = std::string("Código inválido: ") + e.what();
+        }
+    }
+    if (!cheatError_.empty()) ImGui::TextColored(ImVec4(0.85f, 0.25f, 0.35f, 1.0f), "%s", cheatError_.c_str());
+    ImGui::Spacing();
+    ImGui::TextDisabled("Aceita Raw (02024284:63), CodeBreaker (82024284 0063)");
+    ImGui::TextDisabled("e GameShark v1/v2. Action Replay / GameShark v3 ainda não.");
+    ImGui::End();
 }
 
 void App::drawMenuBar() {
@@ -162,6 +215,9 @@ void App::drawMenuBar() {
             ImGui::Separator();
         }
         if (ImGui::MenuItem(paused_ ? "Continuar" : "Pausar", "Esc")) togglePause();
+        const auto active = std::count_if(cheats_.begin(), cheats_.end(), [](const gba::Cheat& c) { return c.enabled; });
+        const std::string cheatsLabel = active ? "Cheats... (" + std::to_string(active) + " ligado" + (active > 1 ? "s)" : ")") : std::string("Cheats...");
+        if (ImGui::MenuItem(cheatsLabel.c_str())) showCheats_ = true;
         ImGui::MenuItem("Voltar no tempo", "segure R", false, false); // só informa o atalho
         ImGui::TextDisabled("  Histórico: %.0f s, %.1f MB", static_cast<double>(rewind_.size() * kRewindInterval) / 60.0,
                             static_cast<double>(rewind_.memoryUsed()) / (1024.0 * 1024.0));

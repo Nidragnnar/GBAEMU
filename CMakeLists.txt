@@ -32,6 +32,7 @@ add_library(gba_core
   src/core/png.cpp
   src/core/rewind.cpp
   src/core/color.cpp
+  src/core/cheats.cpp
   src/core/ppu.cpp)
 target_include_directories(gba_core PUBLIC src)
 if(MSVC)
@@ -89,6 +90,13 @@ if(MSVC)
   target_compile_options(gba_patch_tests PRIVATE /utf-8)
 endif()
 add_test(NAME patch COMMAND gba_patch_tests)
+
+add_executable(gba_cheat_tests tests/test_cheats.cpp)
+target_link_libraries(gba_cheat_tests PRIVATE gba_core)
+if(MSVC)
+  target_compile_options(gba_cheat_tests PRIVATE /utf-8)
+endif()
+add_test(NAME cheats COMMAND gba_cheat_tests)
 
 # ROMs de teste do jsmolka (opcionais: baixadas pelo GitHub Actions; puladas se ausentes)
 add_executable(gba_rom_tests tests/test_roms.cpp)

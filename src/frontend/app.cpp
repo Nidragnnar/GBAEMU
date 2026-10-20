@@ -11,6 +11,7 @@
 #include <filesystem>
 
 #include "core/cartridge.hpp"
+#include "core/cheats.hpp"
 #include "core/color.hpp"
 #include "core/patch.hpp"
 #include "core/png.hpp"
@@ -209,6 +210,12 @@ void App::handleEvent(const SDL_Event& ev) {
 bool App::runOneFrame(bool keepAudio) {
     try {
         console_->runFrame();
+        if (!cheats_.empty()) { // cheats ligados: aplicados a cada quadro, como no GameShark
+            const uint16_t pressed = static_cast<uint16_t>(~console_->bus().read16(0x04000130) & 0x03FF);
+            for (const auto& c : cheats_) {
+                if (c.enabled) gba::applyCheat(c.ops, console_->bus(), pressed);
+            }
+        }
     } catch (const std::exception& e) {
         stopped_ = true;
         stopReason_ = e.what();
@@ -482,6 +489,7 @@ void App::openRom(const std::string& path, std::string patchPath, bool usePatch)
     console_ = std::move(console);
     rewind_.clear();
     romPath_ = path;
+    loadCheats();
     gameTitle_ = header.title.empty() ? gba::pathToUtf8(gba::utf8Path(path).stem()) : header.title;
     paused_ = options_.testPattern; // com o padrão de teste, a CPU não roda
     stopped_ = false;
@@ -490,6 +498,33 @@ void App::openRom(const std::string& path, std::string patchPath, bool usePatch)
     if (audio_) SDL_ClearQueuedAudio(audio_);
     config_.addRecent(path);
     config_.save(configPath_);
+}
+
+// Cheats do jogo: arquivo .cht ao lado da ROM (Jogo.gba -> Jogo.cht).
+std::string App::cheatsPath() const { return gba::pathToUtf8(gba::utf8Path(romPath_).replace_extension(".cht")); }
+
+void App::loadCheats() {
+    cheats_.clear();
+    cheatError_.clear();
+    try {
+        if (std::filesystem::exists(gba::utf8Path(cheatsPath()))) {
+            const auto bytes = gba::readFile(cheatsPath());
+            cheats_ = gba::deserializeCheats(std::string(bytes.begin(), bytes.end()));
+            if (!cheats_.empty()) toast(std::to_string(cheats_.size()) + " cheat(s) carregado(s)");
+        }
+    } catch (const std::exception& e) {
+        toast(std::string("Não deu para ler os cheats: ") + e.what());
+    }
+}
+
+void App::saveCheats() {
+    try {
+        if (cheats_.empty() && !std::filesystem::exists(gba::utf8Path(cheatsPath()))) return; // nada a guardar
+        const std::string text = gba::serializeCheats(cheats_);
+        gba::writeFileSafely(cheatsPath(), std::vector<uint8_t>(text.begin(), text.end()));
+    } catch (const std::exception& e) {
+        toast(std::string("Não deu para salvar os cheats: ") + e.what());
+    }
 }
 
 // Captura de tela: PNG na resolução do GBA (240×160), numa pasta "Capturas" ao lado da ROM, com o nome

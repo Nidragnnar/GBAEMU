@@ -11,6 +11,7 @@
 #include <utility>
 #include <vector>
 
+#include "core/cheats.hpp"
 #include "core/rewind.hpp"
 #include "core/gba.hpp"
 #include "frontend/config.hpp"
@@ -50,6 +51,10 @@ private:
     static bool isPatchFile(const std::string& path);
     void closeRom();
     void takeScreenshot();
+    std::string cheatsPath() const;
+    void loadCheats();
+    void saveCheats();
+    void drawCheatsWindow();
     void resetConsole();
     void togglePause() { if (console_) paused_ = !paused_; }
     void saveStateSlot(int slot);
@@ -139,6 +144,14 @@ private:
 
     // Voltar no tempo: uma foto a cada kRewindInterval quadros, 120 fotos = ~20 s de histórico.
     static constexpr uint64_t kRewindInterval = 10;
+
+    // Cheats do jogo aberto e a janela para editá-los
+    std::vector<gba::Cheat> cheats_;
+    bool showCheats_ = false;
+    std::array<char, 64> cheatName_{};
+    std::array<char, 4096> cheatCode_{};
+    int cheatFormat_ = 0; // índice de gba::CheatFormat
+    std::string cheatError_;
 
     // Filtros de imagem
     std::array<uint32_t, 240 * 160> displayBuffer_{}; // imagem com as cores do GBA aplicadas
